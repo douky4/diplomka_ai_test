@@ -7,7 +7,17 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="test-card">
+  <section class="intro-screen" id="intro-screen" aria-labelledby="intro-title">
+    <div class="intro-card">
+      <p class="eyebrow">Testovací prototyp</p>
+      <h1 id="intro-title">Rozpoznávání AI generovaných obrázků</h1>
+      <p class="intro-copy">Respondent bude rozlišovat skutečné fotografie a AI generované obrázky.</p>
+      <p class="intro-note">Jde zatím pouze o testovací prototyp.</p>
+      <button id="start-button" class="start-button" type="button">Zahájit test</button>
+    </div>
+  </section>
+
+  <main class="test-card" id="test-screen" hidden>
     <header>
       <p class="eyebrow">Výzkumný prototyp</p>
       <h1>Rozpoznávání AI obrázků</h1>

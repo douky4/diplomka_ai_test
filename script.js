@@ -9,6 +9,9 @@ const image = document.querySelector("#test-image");
 const imageNumber = document.querySelector("#image-number");
 const status = document.querySelector("#status");
 const nextButton = document.querySelector("#next-button");
+const startButton = document.querySelector("#start-button");
+const introScreen = document.querySelector("#intro-screen");
+const testScreen = document.querySelector("#test-screen");
 let currentIndex = 0;
 
 function makeIllustration(item) {
@@ -55,4 +58,8 @@ form.addEventListener("submit", (event) => {
   }
 });
 
-showImage();
+startButton.addEventListener("click", () => {
+  introScreen.hidden = true;
+  testScreen.hidden = false;
+  showImage();
+});
