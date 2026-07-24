@@ -1,6 +1,6 @@
 const images = [
-  { colors: ["#1d3557", "#78b3ce"], sun: "#ffd166", label: "Horská krajina" },
-  { colors: ["#4d2d52", "#ef8354"], sun: "#ffe8a3", label: "Západ slunce" },
+  { type: "photo", src: "images/real_001.jpg", label: "Skutečná fotografie" },
+  { type: "photo", src: "images/fake_001.png", label: "AI generovaný obrázek" },
   { colors: ["#264653", "#7ab896"], sun: "#f4d35e", label: "Lesní jezero" }
 ];
 
@@ -53,12 +53,20 @@ function toggleAiReasonField() {
 
 function showImage() {
   const item = images[currentIndex];
-  image.src = makeIllustration(item);
-  image.alt = `Testovací obrázek: ${item.label}`;
+
+  if (item.type === "photo") {
+    image.src = item.src;
+    image.alt = `Testovací obrázek: ${item.label}`;
+  } else {
+    image.src = makeIllustration(item);
+    image.alt = `Testovací obrázek: ${item.label}`;
+  }
+
   imageNumber.textContent = `Obrázek ${currentIndex + 1} z ${images.length}`;
   nextButton.textContent = currentIndex === images.length - 1 ? "Dokončit test" : "Další obrázek";
   form.reset();
   updateButtonState();
+  toggleAiReasonField();
 }
 
 function updateRespondentData() {
