@@ -35,6 +35,15 @@ body {
 }
 
 h1 { margin: 0; font-size: clamp(2rem, 6vw, 3.1rem); line-height: 1.08; }
+.subtitle {
+  max-width: 620px;
+  margin: 14px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid #e3e8f0;
+  color: #4f5e75;
+  font-size: 1rem;
+  line-height: 1.6;
+}
 .intro { max-width: 620px; margin: 14px 0 30px; color: #647087; line-height: 1.6; }
 
 .progress-row { display: flex; justify-content: space-between; margin-bottom: 10px; color: #647087; font-size: 0.9rem; }
