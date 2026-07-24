@@ -9,6 +9,8 @@ const image = document.querySelector("#test-image");
 const imageNumber = document.querySelector("#image-number");
 const status = document.querySelector("#status");
 const nextButton = document.querySelector("#next-button");
+const aiReasonWrap = document.querySelector("#ai-reason-wrap");
+const aiReasonInput = document.querySelector("#ai-reason");
 const startButton = document.querySelector("#start-button");
 const introForm = document.querySelector("#intro-form");
 const introStatus = document.querySelector("#intro-status");
@@ -39,6 +41,16 @@ function updateButtonState() {
   status.textContent = nextButton.disabled ? "Vyberte odpověď" : "Připraveno";
 }
 
+function toggleAiReasonField() {
+  const selectedAnswer = form.elements.answer.value;
+  if (selectedAnswer === "ai") {
+    aiReasonWrap.classList.remove("is-hidden");
+  } else {
+    aiReasonWrap.classList.add("is-hidden");
+    aiReasonInput.value = "";
+  }
+}
+
 function showImage() {
   const item = images[currentIndex];
   image.src = makeIllustration(item);
@@ -67,7 +79,10 @@ function validateIntroForm() {
   return isAgeValid && isGenderValid && isExperienceValid;
 }
 
-form.addEventListener("change", updateButtonState);
+form.addEventListener("change", () => {
+  updateButtonState();
+  toggleAiReasonField();
+});
 
 introForm.addEventListener("input", () => {
   introStatus.textContent = "";

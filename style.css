@@ -170,6 +170,33 @@ legend { margin-bottom: 12px; font-weight: 750; }
 .answer-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .answer-button input, .confidence-scale input { position: absolute; opacity: 0; pointer-events: none; }
 
+.ai-reason-wrap {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.ai-reason-wrap label {
+  font-weight: 700;
+  color: #172033;
+}
+
+.ai-reason-wrap textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 10px 12px;
+  border: 1px solid #d9e0ea;
+  border-radius: 10px;
+  font: inherit;
+  resize: vertical;
+}
+
+.helper-text {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #7a8496;
+}
+
 .answer-button span {
   min-height: 54px;
   padding: 12px 18px;
