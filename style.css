@@ -50,8 +50,63 @@ body {
   font-weight: 600;
 }
 
-.start-button {
+.intro-form {
+  display: grid;
+  gap: 16px;
   margin-top: 24px;
+  text-align: left;
+}
+
+.intro-field {
+  display: grid;
+  gap: 8px;
+}
+
+.intro-field label,
+.intro-field legend {
+  font-weight: 700;
+  color: #172033;
+}
+
+.intro-field input,
+.intro-field select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid #d9e0ea;
+  border-radius: 10px;
+  font: inherit;
+}
+
+.radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.radio-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #d9e0ea;
+  border-radius: 999px;
+  background: #f9fbff;
+}
+
+.radio-option input {
+  width: auto;
+  min-height: auto;
+}
+
+.intro-status {
+  min-height: 1.2em;
+  margin: 0;
+  color: #c84a3f;
+  font-weight: 600;
+}
+
+.start-button {
   min-height: 54px;
   padding: 0 24px;
   border: 0;

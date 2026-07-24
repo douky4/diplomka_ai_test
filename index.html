@@ -13,7 +13,45 @@
       <h1 id="intro-title">Rozpoznávání AI generovaných obrázků</h1>
       <p class="intro-copy">Respondent bude rozlišovat skutečné fotografie a AI generované obrázky.</p>
       <p class="intro-note">Jde zatím pouze o testovací prototyp.</p>
-      <button id="start-button" class="start-button" type="button">Zahájit test</button>
+
+      <form id="intro-form" class="intro-form">
+        <div class="intro-field">
+          <label for="age">Věk</label>
+          <input id="age" name="age" type="number" min="1" step="1" required>
+        </div>
+
+        <fieldset class="intro-field">
+          <legend>Pohlaví</legend>
+          <div class="radio-group">
+            <label class="radio-option">
+              <input type="radio" name="gender" value="muž" required>
+              <span>Muž</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="gender" value="žena">
+              <span>Žena</span>
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="gender" value="jiné">
+              <span>Jiné</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="intro-field">
+          <label for="experience">Zkušenost s AI</label>
+          <select id="experience" name="experience" required>
+            <option value="">Vyberte jednu možnost</option>
+            <option value="nikdy">Nikdy</option>
+            <option value="vyjimecne">Výjimečně</option>
+            <option value="caste">Často</option>
+            <option value="denni">Denně</option>
+          </select>
+        </div>
+
+        <p id="intro-status" class="intro-status" aria-live="polite"></p>
+        <button id="start-button" class="start-button" type="submit">Zahájit test</button>
+      </form>
     </div>
   </section>
 

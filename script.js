@@ -10,9 +10,15 @@ const imageNumber = document.querySelector("#image-number");
 const status = document.querySelector("#status");
 const nextButton = document.querySelector("#next-button");
 const startButton = document.querySelector("#start-button");
+const introForm = document.querySelector("#intro-form");
+const introStatus = document.querySelector("#intro-status");
 const introScreen = document.querySelector("#intro-screen");
 const testScreen = document.querySelector("#test-screen");
+const ageInput = document.querySelector("#age");
+const genderInputs = Array.from(document.querySelectorAll('input[name="gender"]'));
+const experienceSelect = document.querySelector("#experience");
 let currentIndex = 0;
+let respondentData = {};
 
 function makeIllustration(item) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
@@ -43,7 +49,47 @@ function showImage() {
   updateButtonState();
 }
 
+function updateRespondentData() {
+  respondentData = {
+    age: ageInput.value ? Number(ageInput.value) : null,
+    gender: genderInputs.find((input) => input.checked)?.value || "",
+    experience: experienceSelect.value
+  };
+}
+
+function validateIntroForm() {
+  updateRespondentData();
+
+  const isAgeValid = Number.isInteger(respondentData.age) && respondentData.age > 0;
+  const isGenderValid = Boolean(respondentData.gender);
+  const isExperienceValid = Boolean(respondentData.experience);
+
+  return isAgeValid && isGenderValid && isExperienceValid;
+}
+
 form.addEventListener("change", updateButtonState);
+
+introForm.addEventListener("input", () => {
+  introStatus.textContent = "";
+});
+
+introForm.addEventListener("change", () => {
+  introStatus.textContent = "";
+});
+
+introForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  if (!validateIntroForm()) {
+    introStatus.textContent = "Vyplňte všechna pole před pokračováním.";
+    return;
+  }
+
+  console.info("Respondent data:", respondentData);
+  introScreen.classList.add("is-hidden");
+  testScreen.classList.remove("is-hidden");
+  showImage();
+});
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -58,8 +104,3 @@ form.addEventListener("submit", (event) => {
   }
 });
 
-startButton.addEventListener("click", () => {
-  introScreen.classList.add("is-hidden");
-  testScreen.classList.remove("is-hidden");
-  showImage();
-});
