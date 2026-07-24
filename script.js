@@ -59,7 +59,7 @@ form.addEventListener("submit", (event) => {
 });
 
 startButton.addEventListener("click", () => {
-  introScreen.hidden = true;
-  testScreen.hidden = false;
+  introScreen.classList.add("is-hidden");
+  testScreen.classList.remove("is-hidden");
   showImage();
 });

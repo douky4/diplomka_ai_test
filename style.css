@@ -69,8 +69,8 @@ body {
   transform: translateY(-1px);
 }
 
-.test-card[hidden] {
-  display: none;
+.is-hidden {
+  display: none !important;
 }
 
 .eyebrow {
