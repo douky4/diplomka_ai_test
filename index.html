@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rozpoznávání AI obrázků</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="test-card">
+    <header>
+      <p class="eyebrow">Výzkumný prototyp</p>
+      <h1>Rozpoznávání AI obrázků</h1>
+      <p class="intro">Rozhodněte, zda je zobrazený obrázek skutečná fotografie, nebo byl vytvořen pomocí AI.</p>
+    </header>
+
+    <section class="image-section" aria-labelledby="image-number">
+      <div class="progress-row">
+        <span id="image-number">Obrázek 1 z 3</span>
+        <span id="status" aria-live="polite">Vyberte odpověď</span>
+      </div>
+      <div class="image-frame">
+        <img id="test-image" src="" alt="Testovací obrázek určený k posouzení">
+      </div>
+    </section>
+
+    <form id="test-form">
+      <fieldset>
+        <legend>Jak podle vás obrázek vznikl?</legend>
+        <div class="answer-options">
+          <label class="answer-button">
+            <input type="radio" name="answer" value="photo">
+            <span>Skutečná fotografie</span>
+          </label>
+          <label class="answer-button">
+            <input type="radio" name="answer" value="ai">
+            <span>Vytvořeno pomocí AI</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Jak moc jste si jistí?</legend>
+        <div class="confidence-scale" aria-label="Míra jistoty od 1 do 5">
+          <span class="scale-caption">Vůbec</span>
+          <label><input type="radio" name="confidence" value="1"><span>1</span></label>
+          <label><input type="radio" name="confidence" value="2"><span>2</span></label>
+          <label><input type="radio" name="confidence" value="3"><span>3</span></label>
+          <label><input type="radio" name="confidence" value="4"><span>4</span></label>
+          <label><input type="radio" name="confidence" value="5"><span>5</span></label>
+          <span class="scale-caption">Naprosto</span>
+        </div>
+      </fieldset>
+
+      <button id="next-button" class="next-button" type="submit" disabled>Další obrázek</button>
+    </form>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
