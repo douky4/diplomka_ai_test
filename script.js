@@ -4,6 +4,7 @@ const images = [
   { colors: ["#264653", "#7ab896"], sun: "#f4d35e", label: "Lesní jezero" }
 ];
 
+const STORAGE_KEY = "diplomka_ai_test_state";
 const form = document.querySelector("#test-form");
 const image = document.querySelector("#test-image");
 const imageNumber = document.querySelector("#image-number");
@@ -22,6 +23,15 @@ const experienceSelect = document.querySelector("#experience");
 let currentIndex = 0;
 let respondentData = {};
 
+const defaultQuizState = {
+  started: false,
+  currentIndex: 0,
+  answers: Array(images.length).fill(null).map(() => ({ answer: "", confidence: "", aiReason: "" })),
+  intro: { age: null, gender: "", experience: "" }
+};
+
+let quizState = loadStateFromStorage();
+
 function makeIllustration(item) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
     <defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="${item.colors[0]}"/><stop offset="1" stop-color="${item.colors[1]}"/></linearGradient></defs>
@@ -32,6 +42,33 @@ function makeIllustration(item) {
     <path d="M0 430 Q210 390 400 440 T800 415V500H0Z" fill="#bcd9e8" opacity=".45"/>
   </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function saveStateToStorage() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(quizState));
+  } catch (error) {
+    console.warn("Unable to save state", error);
+  }
+}
+
+function loadStateFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return { ...defaultQuizState };
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      ...defaultQuizState,
+      ...parsed,
+      answers: parsed.answers && parsed.answers.length === images.length ? parsed.answers : defaultQuizState.answers,
+      intro: { ...defaultQuizState.intro, ...(parsed.intro || {}) }
+    };
+  } catch (error) {
+    console.warn("Unable to load state", error);
+    return { ...defaultQuizState };
+  }
 }
 
 function updateButtonState() {
@@ -51,6 +88,23 @@ function toggleAiReasonField() {
   }
 }
 
+function restoreQuestionState() {
+  const saved = quizState.answers[currentIndex] || { answer: "", confidence: "", aiReason: "" };
+  if (saved.answer) {
+    form.elements.answer.value = saved.answer;
+  }
+  if (saved.confidence) {
+    form.elements.confidence.value = saved.confidence;
+  }
+  aiReasonInput.value = saved.aiReason || "";
+  if (saved.answer === "ai") {
+    aiReasonWrap.classList.remove("is-hidden");
+  } else {
+    aiReasonWrap.classList.add("is-hidden");
+  }
+  updateButtonState();
+}
+
 function showImage() {
   const item = images[currentIndex];
 
@@ -65,8 +119,7 @@ function showImage() {
   imageNumber.textContent = `Obrázek ${currentIndex + 1} z ${images.length}`;
   nextButton.textContent = currentIndex === images.length - 1 ? "Dokončit test" : "Další obrázek";
   form.reset();
-  updateButtonState();
-  toggleAiReasonField();
+  restoreQuestionState();
 }
 
 function updateRespondentData() {
@@ -75,6 +128,20 @@ function updateRespondentData() {
     gender: genderInputs.find((input) => input.checked)?.value || "",
     experience: experienceSelect.value
   };
+  quizState.intro = { ...respondentData };
+  saveStateToStorage();
+}
+
+function updateQuizState() {
+  const answer = form.elements.answer.value;
+  const confidence = form.elements.confidence.value;
+  quizState.answers[currentIndex] = {
+    answer,
+    confidence,
+    aiReason: aiReasonInput.value
+  };
+  quizState.currentIndex = currentIndex;
+  saveStateToStorage();
 }
 
 function validateIntroForm() {
@@ -94,10 +161,12 @@ form.addEventListener("change", () => {
 
 introForm.addEventListener("input", () => {
   introStatus.textContent = "";
+  updateRespondentData();
 });
 
 introForm.addEventListener("change", () => {
   introStatus.textContent = "";
+  updateRespondentData();
 });
 
 introForm.addEventListener("submit", (event) => {
@@ -108,11 +177,38 @@ introForm.addEventListener("submit", (event) => {
     return;
   }
 
+  quizState.started = true;
+  quizState.currentIndex = currentIndex;
+  saveStateToStorage();
+
   console.info("Respondent data:", respondentData);
   introScreen.classList.add("is-hidden");
   testScreen.classList.remove("is-hidden");
   showImage();
 });
+
+function initializeApp() {
+  if (quizState.started) {
+    currentIndex = quizState.currentIndex || 0;
+    introScreen.classList.add("is-hidden");
+    testScreen.classList.remove("is-hidden");
+    ageInput.value = quizState.intro.age || "";
+    genderInputs.forEach((input) => {
+      input.checked = input.value === quizState.intro.gender;
+    });
+    experienceSelect.value = quizState.intro.experience || "";
+    showImage();
+  } else {
+    ageInput.value = quizState.intro.age || "";
+    genderInputs.forEach((input) => {
+      input.checked = input.value === quizState.intro.gender;
+    });
+    experienceSelect.value = quizState.intro.experience || "";
+    introStatus.textContent = "";
+  }
+}
+
+initializeApp();
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
