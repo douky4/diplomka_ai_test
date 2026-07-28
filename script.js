@@ -236,3 +236,77 @@ form.addEventListener("submit", (event) => {
   }
 });
 
+// Export current quiz state to CSV and download
+function exportToCSV() {
+  const state = quizState;
+  if (!state || !state.intro) {
+    alert('Žádná data k exportu. Najprv dokončete nebo začněte test.');
+    return;
+  }
+
+  const rows = [];
+  const header = ['age','gender','experience','question_index','question_label','answer','confidence','ai_reason'];
+  for (let i = 0; i < state.answers.length; i++) {
+    const a = state.answers[i] || { answer: '', confidence: '', aiReason: '' };
+    const label = images[i] ? (images[i].label || '') : '';
+    rows.push([
+      state.intro.age || '',
+      state.intro.gender || '',
+      state.intro.experience || '',
+      i+1,
+      label,
+      a.answer || '',
+      a.confidence || '',
+      (a.aiReason || '').replace(/\r?\n/g, ' ')
+    ].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(','));
+  }
+
+  const csv = [header.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const ts = new Date().toISOString().replace(/[:.]/g,'-');
+  a.download = `diplomka_results_${ts}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Send current quiz state to server API (POST JSON)
+async function sendToServer() {
+  const apiInput = document.querySelector('#server-api');
+  const statusEl = document.querySelector('#server-status');
+  if (!apiInput) return;
+  const url = apiInput.value.trim();
+  if (!url) {
+    statusEl.textContent = 'Zadejte URL API pro odeslání.';
+    return;
+  }
+  statusEl.textContent = 'Odesílám...';
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ participant: quizState.intro, answers: quizState.answers })
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      statusEl.textContent = `Chyba: ${resp.status} ${text}`;
+      return;
+    }
+    const json = await resp.json().catch(() => null);
+    statusEl.textContent = 'Odesláno úspěšně.' + (json && json.id ? ` ID: ${json.id}` : '');
+  } catch (err) {
+    statusEl.textContent = 'Odeslání selhalo: ' + err.message;
+  }
+}
+
+// Hook up buttons
+const exportBtn = document.querySelector('#export-csv');
+if (exportBtn) exportBtn.addEventListener('click', exportToCSV);
+const sendBtn = document.querySelector('#send-server');
+if (sendBtn) sendBtn.addEventListener('click', sendToServer);
+
+
