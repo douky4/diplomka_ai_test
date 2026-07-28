@@ -32,6 +32,19 @@ const defaultQuizState = {
 
 let quizState = loadStateFromStorage();
 
+const resetIntroBtn = document.querySelector('#reset-intro');
+if (resetIntroBtn) {
+  resetIntroBtn.addEventListener('click', () => {
+    quizState.intro = { age: null, gender: "", experience: "" };
+    saveStateToStorage();
+    ageInput.value = "";
+    genderInputs.forEach(g => g.checked = false);
+    experienceSelect.value = "";
+    introScreen.style.display = '';
+    testScreen.style.display = 'none';
+  });
+}
+
 function makeIllustration(item) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
     <defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="${item.colors[0]}"/><stop offset="1" stop-color="${item.colors[1]}"/></linearGradient></defs>
