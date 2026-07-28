@@ -46,3 +46,18 @@ Tento projekt byl přepsán na Streamlit aplikaci s SQLite databází pro nasaze
 ## Poznámka
 
 Tento projekt již nepoužívá `index.html`, `script.js` a `style.css` pro běh Streamlit aplikace. Jsou v repozitáři zachovány jako původní verze projektu.
+
+## Nasazení na GitHub Pages
+
+Přidal jsem GitHub Actions workflow, které nasazuje obsah repozitáře na GitHub Pages při pushi do větve `main` nebo `master`.
+
+Postup k nasazení lokálních změn na web:
+
+```bash
+git add .
+git commit -m "Update site / add deploy workflow"
+git push origin main
+```
+
+Po pushi GitHub automaticky spustí workflow a nasadí stránky. Pokud repozitář ještě nemá GitHub Pages povolené, otevřete nastavení repozitáře a povolte Pages (zdroj obvykle nastavte na `gh-pages` nebo GitHub se postará automaticky).
+
