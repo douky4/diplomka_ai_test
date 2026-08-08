@@ -279,9 +279,83 @@ def export_csv():
         return jsonify({"error": str(e)}), 400
 
 
-@app.route("/admin", methods=["GET"])
+@app.route("/admin", methods=["GET", "POST"])
 def admin_dashboard():
-    """Admin stránka - vidíš všechna data"""
+    """Admin stránka - vidíš všechna data (s heslem)"""
+    
+    ADMIN_PASSWORD = "adminFilip"
+    
+    # Kontrola hesla
+    password = request.args.get("password") or request.form.get("password")
+    
+    # Pokud heslo není správné, zobraz login formu
+    if password != ADMIN_PASSWORD:
+        login_html = """
+        <!DOCTYPE html>
+        <html lang="cs">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Admin Login</title>
+            <style>
+                body { 
+                    font-family: Arial, sans-serif; 
+                    margin: 0; 
+                    padding: 0;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                }
+                .login-box {
+                    background: white;
+                    padding: 40px;
+                    border-radius: 8px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    width: 100%;
+                    max-width: 400px;
+                }
+                h1 { text-align: center; color: #333; margin-bottom: 30px; }
+                form { display: flex; flex-direction: column; }
+                input { 
+                    padding: 12px; 
+                    margin-bottom: 15px; 
+                    border: 1px solid #ddd; 
+                    border-radius: 4px; 
+                    font-size: 14px;
+                }
+                button { 
+                    padding: 12px; 
+                    background: #667eea; 
+                    color: white; 
+                    border: none; 
+                    border-radius: 4px; 
+                    cursor: pointer; 
+                    font-weight: bold;
+                    font-size: 14px;
+                }
+                button:hover { background: #764ba2; }
+                .error { color: #e74c3c; text-align: center; margin-bottom: 15px; }
+            </style>
+        </head>
+        <body>
+            <div class="login-box">
+                <h1>🔐 Admin Přístup</h1>
+                <form method="POST">
+                    <input type="password" name="password" placeholder="Zadej heslo" required autofocus>
+                    <button type="submit">Přihlásit se</button>
+                </form>
+                <p style="text-align: center; color: #999; margin-top: 20px; font-size: 12px;">
+                    <a href="/" style="color: #667eea;">← Zpět na test</a>
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+        return login_html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+    
+    # Pokud je heslo správné, zobraz dashboard
     try:
         participants = get_all_participants()
         
