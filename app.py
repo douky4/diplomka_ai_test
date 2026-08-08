@@ -278,6 +278,124 @@ def export_csv():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/admin/respondent/<participant_id>", methods=["GET"])
+def respondent_detail(participant_id):
+    """Detail respondenta s jeho odpověďmi"""
+    
+    ADMIN_PASSWORD = "adminFilip"
+    password = request.args.get("password")
+    
+    if password != ADMIN_PASSWORD:
+        return "Chyba: nesprávné heslo", 403
+    
+    try:
+        participant = get_participant(participant_id)
+        if not participant:
+            return "Respondent nenalezen", 404
+        
+        answers = get_answers(participant_id)
+        
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="cs">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Detail respondenta</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+                .container {{ max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }}
+                h1 {{ color: #333; }}
+                .info {{ background: #f0f0f0; padding: 15px; border-radius: 8px; margin-bottom: 20px; }}
+                .info-item {{ margin: 8px 0; }}
+                .info-label {{ font-weight: bold; color: #667eea; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
+                th {{ background: #667eea; color: white; padding: 12px; text-align: left; }}
+                td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
+                tr:hover {{ background: #f9f9f9; }}
+                .correct {{ color: #27ae60; font-weight: bold; }}
+                .incorrect {{ color: #e74c3c; font-weight: bold; }}
+                a {{ color: #667eea; text-decoration: none; margin-right: 20px; }}
+                a:hover {{ text-decoration: underline; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <a href="/admin?password={password}">← Zpět na dashboard</a>
+                
+                <h1>Respondent: {participant_id[:12]}...</h1>
+                
+                <div class="info">
+                    <div class="info-item"><span class="info-label">Věk:</span> {participant['age']}</div>
+                    <div class="info-item"><span class="info-label">Pohlaví:</span> {participant['gender']}</div>
+                    <div class="info-item"><span class="info-label">Zkušenost s AI:</span> {participant['experience']}</div>
+                    <div class="info-item"><span class="info-label">Vyplnil:</span> {participant['created_at']}</div>
+                </div>
+                
+                <h2>Odpovědi na otázky:</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Otázka</th>
+                            <th>Co bylo?</th>
+                            <th>Respondent odpověděl</th>
+                            <th>Správnost</th>
+                            <th>Jistota (1-5)</th>
+                            <th>Poznámka (AI)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        """
+        
+        correct_count = 0
+        for ans in answers:
+            question_index = ans["question_index"]
+            respondent_answer = ans["answer"]
+            confidence = ans["confidence"]
+            ai_reason = ans["ai_reason"] or "-"
+            
+            correct_answer = QUESTIONS[question_index]["correct"]
+            what_was = QUESTIONS[question_index].get("label", "Obrázek")
+            
+            is_correct = respondent_answer == correct_answer
+            if is_correct:
+                correct_count += 1
+            
+            status = '<span class="correct">✅ Správně</span>' if is_correct else '<span class="incorrect">❌ Špatně</span>'
+            answer_display = "Fotografie" if respondent_answer == "photo" else "AI"
+            
+            html += f"""
+                        <tr>
+                            <td>Otázka {question_index + 1}</td>
+                            <td>{what_was}</td>
+                            <td><strong>{answer_display}</strong></td>
+                            <td>{status}</td>
+                            <td>{confidence}/5</td>
+                            <td>{ai_reason[:60]}</td>
+                        </tr>
+            """
+        
+        accuracy = (correct_count / len(answers) * 100) if answers else 0
+        
+        html += f"""
+                    </tbody>
+                </table>
+                
+                <h3 style="margin-top: 30px; padding: 15px; background: #e8f4f8; border-left: 4px solid #667eea;">
+                    📊 Výsledek: {correct_count}/{len(answers)} správně ({accuracy:.0f}%)
+                </h3>
+                
+                <a href="/admin?password={password}" style="margin-top: 20px; display: inline-block;">← Zpět na dashboard</a>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except Exception as e:
+        return f"Chyba: {str(e)}", 400
+
+
 @app.route("/admin", methods=["GET", "POST"])
 def admin_dashboard():
     """Admin stránka - vidíš všechna data (s heslem)"""
@@ -441,9 +559,10 @@ def admin_dashboard():
         for p in participants:
             ai_photo = f"{p['ai_count'] or 0} / {p['photo_count'] or 0}"
             avg_conf = f"{p['avg_confidence']:.1f}" if p["avg_confidence"] is not None else "-"
+            detail_link = f"/admin/respondent/{p['id']}?password={password}"
             html += f"""
                         <tr>
-                            <td style="font-family: monospace; font-size: 11px;">{p['id'][:12]}...</td>
+                            <td style="font-family: monospace; font-size: 11px;"><a href="{detail_link}">{p['id'][:12]}...</a></td>
                             <td>{p['age']}</td>
                             <td>{p['gender']}</td>
                             <td>{p['experience']}</td>
