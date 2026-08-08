@@ -14,6 +14,14 @@ QUESTIONS = [
     {"type": "photo", "src": "images/fake_001.webp", "label": "AI generovaný obrázek", "correct": "ai"},
 ]
 
+AGE_GROUPS = (
+    ("Do 20 let", 0, 20),
+    ("21–30 let", 21, 30),
+    ("31–40 let", 31, 40),
+    ("41–50 let", 41, 50),
+    ("51 a více let", 51, None),
+)
+
 
 def score_answer(is_correct: bool, confidence: int) -> float:
     """Skóre 0–100 zohledňující správnost i deklarovanou jistotu."""
@@ -45,6 +53,30 @@ def calculate_metrics(answers) -> dict:
         "avg_confidence": round(confidence_total / count, 2),
         "weighted_score": round(score_total / count, 1),
     }
+
+
+def calculate_age_analysis(participants) -> list:
+    """Agreguje výsledky respondentů do předem daných věkových skupin."""
+    analysis = []
+    for label, minimum, maximum in AGE_GROUPS:
+        group_participants = [
+            participant
+            for participant in participants
+            if participant["age"] >= minimum
+            and (maximum is None or participant["age"] <= maximum)
+        ]
+        group_answers = [
+            answer
+            for participant in group_participants
+            for answer in get_answers(participant["id"])
+        ]
+        metrics = calculate_metrics(group_answers)
+        analysis.append({
+            "age_group": label,
+            "participants_count": len(group_participants),
+            **metrics,
+        })
+    return analysis
 
 
 def get_connection():
@@ -322,6 +354,15 @@ def export_csv():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route("/api/results/age-analysis", methods=["GET"])
+def get_age_analysis():
+    """Vrátí souhrn úspěšnosti, jistoty a skóre podle věkových skupin."""
+    try:
+        return jsonify(calculate_age_analysis(get_all_participants())), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route("/admin/respondent/<participant_id>", methods=["GET"])
 def respondent_detail(participant_id):
     """Detail respondenta s jeho odpověďmi"""
@@ -522,6 +563,7 @@ def admin_dashboard():
     # Pokud je heslo správné, zobraz dashboard
     try:
         participants = get_all_participants()
+        age_analysis = calculate_age_analysis(participants)
         
         # HTML stránka s tabulkou
         html = """
@@ -635,6 +677,44 @@ def admin_dashboard():
                         </tr>
             """
         
+        html += """
+                    </tbody>
+                </table>
+
+                <h2 style="margin-top: 40px;">👥 Výsledky podle věku:</h2>
+                <p style="color: #666; line-height: 1.5;">
+                    Porovnání ukazuje běžnou úspěšnost, míru jistoty i jistotou vážené skóre jednotlivých věkových skupin.
+                </p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Věková skupina</th>
+                            <th>Respondentů</th>
+                            <th>Odpovědí</th>
+                            <th>Správně</th>
+                            <th>Úspěšnost</th>
+                            <th>Prům. jistota</th>
+                            <th>Vážené skóre</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        """
+
+        for group in age_analysis:
+            avg_confidence = f"{group['avg_confidence']:.2f} / 5" if group["avg_confidence"] is not None else "-"
+            weighted_score = f"{group['weighted_score']:.1f} / 100" if group["weighted_score"] is not None else "-"
+            html += f"""
+                        <tr>
+                            <td><strong>{group['age_group']}</strong></td>
+                            <td>{group['participants_count']}</td>
+                            <td>{group['answer_count']}</td>
+                            <td>{group['correct_count']}</td>
+                            <td>{group['accuracy']:.1f} %</td>
+                            <td>{avg_confidence}</td>
+                            <td><strong>{weighted_score}</strong></td>
+                        </tr>
+            """
+
         html += """
                     </tbody>
                 </table>

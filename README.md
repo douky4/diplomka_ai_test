@@ -49,6 +49,8 @@ Celkové vážené skóre respondenta je průměr bodů ze všech jeho odpověd�
 
 Výsledky jsou dostupné v administraci, detailu respondenta, výsledkovém API a CSV exportu.
 
+Administrace navíc porovnává výsledky ve věkových skupinách do 20, 21–30, 31–40, 41–50 a 51 a více let. U každé skupiny uvádí počet respondentů a odpovědí, úspěšnost, průměrnou jistotu a vážené skóre. Stejná agregovaná data poskytuje endpoint `/api/results/age-analysis`.
+
 ## Nasazení na Render
 
 Render podle `render.yaml` provede:
