@@ -8,7 +8,7 @@ venv/
 .venv/
 .env
 
-# Streamlit / local database
+# Local database
 database.db
 
 # OS files

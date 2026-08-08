@@ -1,7 +1,5 @@
-import os
 import sqlite3
 import uuid
-import json
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -11,12 +9,42 @@ app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
 DB_PATH = "database.db"
-IMAGE_DIR = "images"
-
 QUESTIONS = [
     {"type": "photo", "src": "images/real_001.jpg", "label": "Skutečná fotografie", "correct": "photo"},
     {"type": "photo", "src": "images/fake_001.webp", "label": "AI generovaný obrázek", "correct": "ai"},
 ]
+
+
+def score_answer(is_correct: bool, confidence: int) -> float:
+    """Skóre 0–100 zohledňující správnost i deklarovanou jistotu."""
+    if confidence not in range(1, 6):
+        raise ValueError("Jistota musí být číslo od 1 do 5")
+    return float(50 + (10 * confidence if is_correct else -10 * confidence))
+
+
+def calculate_metrics(answers) -> dict:
+    """Spočítá běžnou úspěšnost, jistotu a jistotou vážené skóre."""
+    valid_answers = [a for a in answers if 0 <= a["question_index"] < len(QUESTIONS)]
+    if not valid_answers:
+        return {"answer_count": 0, "correct_count": 0, "accuracy": 0.0, "avg_confidence": None, "weighted_score": None}
+
+    correct_count = 0
+    score_total = 0.0
+    confidence_total = 0
+    for answer in valid_answers:
+        is_correct = answer["answer"] == QUESTIONS[answer["question_index"]]["correct"]
+        correct_count += int(is_correct)
+        confidence_total += answer["confidence"]
+        score_total += score_answer(is_correct, answer["confidence"])
+
+    count = len(valid_answers)
+    return {
+        "answer_count": count,
+        "correct_count": correct_count,
+        "accuracy": round(correct_count / count * 100, 1),
+        "avg_confidence": round(confidence_total / count, 2),
+        "weighted_score": round(score_total / count, 1),
+    }
 
 
 def get_connection():
@@ -180,8 +208,12 @@ def submit_answer():
         confidence = int(data.get("confidence"))
         ai_reason = data.get("ai_reason", "")
         
-        if not all([participant_id, answer, confidence]):
+        if not participant_id or answer not in {"ai", "photo"}:
             return jsonify({"error": "Chybí povinná pole"}), 400
+        if question_index not in range(len(QUESTIONS)):
+            return jsonify({"error": "Neplatný index otázky"}), 400
+        if confidence not in range(1, 6):
+            return jsonify({"error": "Jistota musí být číslo od 1 do 5"}), 400
         
         # Ověř, že participant existuje
         participant = get_participant(participant_id)
@@ -230,6 +262,7 @@ def get_results():
         participants = get_all_participants()
         results = []
         for p in participants:
+            metrics = calculate_metrics(get_answers(p["id"]))
             results.append({
                 "id": p["id"],
                 "age": p["age"],
@@ -240,6 +273,10 @@ def get_results():
                 "avg_confidence": round(float(p["avg_confidence"]), 2) if p["avg_confidence"] is not None else None,
                 "ai_count": p["ai_count"] or 0,
                 "photo_count": p["photo_count"] or 0,
+                "correct_count": metrics["correct_count"],
+                "scored_answers_count": metrics["answer_count"],
+                "accuracy": metrics["accuracy"],
+                "weighted_score": metrics["weighted_score"],
             })
         return jsonify(results), 200
     except Exception as e:
@@ -255,14 +292,21 @@ def export_csv():
         for p in participants:
             answers = get_answers(p["id"])
             for ans in answers:
+                question_index = ans["question_index"]
+                if question_index not in range(len(QUESTIONS)):
+                    continue
+                is_correct = ans["answer"] == QUESTIONS[question_index]["correct"]
                 data.append({
                     "participant_id": p["id"],
                     "age": p["age"],
                     "gender": p["gender"],
                     "experience": p["experience"],
-                    "question_index": ans["question_index"],
+                    "question_index": question_index,
+                    "correct_answer": QUESTIONS[question_index]["correct"],
                     "answer": ans["answer"],
+                    "is_correct": is_correct,
                     "confidence": ans["confidence"],
+                    "weighted_score": score_answer(is_correct, ans["confidence"]),
                     "ai_reason": ans["ai_reason"],
                     "created_at": p["created_at"],
                 })
@@ -341,15 +385,18 @@ def respondent_detail(participant_id):
                             <th>Respondent odpověděl</th>
                             <th>Správnost</th>
                             <th>Jistota (1-5)</th>
+                            <th>Vážené skóre</th>
                             <th>Poznámka (AI)</th>
                         </tr>
                     </thead>
                     <tbody>
         """
         
-        correct_count = 0
+        metrics = calculate_metrics(answers)
         for ans in answers:
             question_index = ans["question_index"]
+            if question_index not in range(len(QUESTIONS)):
+                continue
             respondent_answer = ans["answer"]
             confidence = ans["confidence"]
             ai_reason = ans["ai_reason"] or "-"
@@ -358,8 +405,7 @@ def respondent_detail(participant_id):
             what_was = QUESTIONS[question_index].get("label", "Obrázek")
             
             is_correct = respondent_answer == correct_answer
-            if is_correct:
-                correct_count += 1
+            answer_score = score_answer(is_correct, confidence)
             
             status = '<span class="correct">✅ Správně</span>' if is_correct else '<span class="incorrect">❌ Špatně</span>'
             answer_display = "Fotografie" if respondent_answer == "photo" else "AI"
@@ -371,18 +417,19 @@ def respondent_detail(participant_id):
                             <td><strong>{answer_display}</strong></td>
                             <td>{status}</td>
                             <td>{confidence}/5</td>
+                            <td><strong>{answer_score:.0f}/100</strong></td>
                             <td>{ai_reason[:60]}</td>
                         </tr>
             """
-        
-        accuracy = (correct_count / len(answers) * 100) if answers else 0
         
         html += f"""
                     </tbody>
                 </table>
                 
                 <h3 style="margin-top: 30px; padding: 15px; background: #e8f4f8; border-left: 4px solid #667eea;">
-                    📊 Výsledek: {correct_count}/{len(answers)} správně ({accuracy:.0f}%)
+                    📊 Úspěšnost: {metrics['correct_count']}/{metrics['answer_count']} správně ({metrics['accuracy']:.1f} %)<br>
+                    🎯 Jistotou vážené skóre: {metrics['weighted_score'] if metrics['weighted_score'] is not None else '-'} / 100<br>
+                    🤔 Průměrná jistota: {metrics['avg_confidence'] if metrics['avg_confidence'] is not None else '-'} / 5
                 </h3>
                 
                 <a href="/admin?password={password}" style="margin-top: 20px; display: inline-block;">← Zpět na dashboard</a>
@@ -488,7 +535,7 @@ def admin_dashboard():
                 body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
                 .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
                 h1 { color: #333; }
-                .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 30px; }
+                .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 15px; margin-bottom: 30px; }
                 .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; }
                 .stat-card h3 { margin: 0; font-size: 12px; opacity: 0.8; }
                 .stat-card .number { font-size: 28px; font-weight: bold; margin-top: 10px; }
@@ -514,6 +561,8 @@ def admin_dashboard():
         total_answers = sum(p["answers_count"] or 0 for p in participants)
         total_ai = sum(p["ai_count"] or 0 for p in participants)
         total_photo = sum(p["photo_count"] or 0 for p in participants)
+        all_answers = [answer for p in participants for answer in get_answers(p["id"])]
+        overall_metrics = calculate_metrics(all_answers)
         
         html += f"""
                     <div class="stat-card">
@@ -531,6 +580,14 @@ def admin_dashboard():
                     <div class="stat-card">
                         <h3>Odpovědí "Fotografie"</h3>
                         <div class="number">{total_photo}</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Celková úspěšnost</h3>
+                        <div class="number">{overall_metrics['accuracy']:.1f} %</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Vážené skóre</h3>
+                        <div class="number">{overall_metrics['weighted_score'] if overall_metrics['weighted_score'] is not None else '-'} / 100</div>
                     </div>
                 </div>
                 
@@ -550,6 +607,8 @@ def admin_dashboard():
                             <th>Odpovědí</th>
                             <th>AI / Foto</th>
                             <th>Prům. jistota</th>
+                            <th>Úspěšnost</th>
+                            <th>Vážené skóre</th>
                             <th>Datum</th>
                         </tr>
                     </thead>
@@ -557,6 +616,7 @@ def admin_dashboard():
         """
         
         for p in participants:
+            metrics = calculate_metrics(get_answers(p["id"]))
             ai_photo = f"{p['ai_count'] or 0} / {p['photo_count'] or 0}"
             avg_conf = f"{p['avg_confidence']:.1f}" if p["avg_confidence"] is not None else "-"
             detail_link = f"/admin/respondent/{p['id']}?password={password}"
@@ -569,6 +629,8 @@ def admin_dashboard():
                             <td>{p['answers_count'] or 0}</td>
                             <td>{ai_photo}</td>
                             <td>{avg_conf}</td>
+                            <td>{metrics['accuracy']:.1f} %</td>
+                            <td><strong>{metrics['weighted_score'] if metrics['weighted_score'] is not None else '-'} / 100</strong></td>
                             <td>{p['created_at'][:10]}</td>
                         </tr>
             """
@@ -589,6 +651,7 @@ def admin_dashboard():
                             <th>Odpověď</th>
                             <th>Správně?</th>
                             <th>Jistota (1-5)</th>
+                            <th>Vážené skóre</th>
                             <th>Důvod (AI)</th>
                         </tr>
                     </thead>
@@ -600,6 +663,8 @@ def admin_dashboard():
             answers = get_answers(p["id"])
             for ans in answers:
                 question_index = ans["question_index"]
+                if question_index not in range(len(QUESTIONS)):
+                    continue
                 respondent_answer = ans["answer"]
                 confidence = ans["confidence"]
                 ai_reason = ans["ai_reason"] or ""
@@ -609,7 +674,9 @@ def admin_dashboard():
                 what_was = QUESTIONS[question_index].get("label", "Obrázek")
                 
                 # Kontrola správnosti
-                is_correct = "✅ Ano" if respondent_answer == correct_answer else "❌ Ne"
+                answer_is_correct = respondent_answer == correct_answer
+                is_correct = "✅ Ano" if answer_is_correct else "❌ Ne"
+                answer_score = score_answer(answer_is_correct, confidence)
                 
                 # Konverze odpovědi na čeština
                 answer_display = "Fotografie" if respondent_answer == "photo" else "AI"
@@ -624,6 +691,7 @@ def admin_dashboard():
                             <td><strong>{answer_display}</strong></td>
                             <td>{is_correct}</td>
                             <td>{confidence}/5</td>
+                            <td><strong>{answer_score:.0f}/100</strong></td>
                             <td style="font-size: 12px; max-width: 200px;">{ai_reason[:50]}</td>
                         </tr>
                 """
