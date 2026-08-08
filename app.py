@@ -459,6 +459,61 @@ def admin_dashboard():
                     </tbody>
                 </table>
                 
+                <h2 style="margin-top: 40px;">📝 Detailní odpovědi respondentů:</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Respondent</th>
+                            <th>Věk</th>
+                            <th>Pohlaví</th>
+                            <th>Otázka</th>
+                            <th>Co bylo?</th>
+                            <th>Odpověď</th>
+                            <th>Správně?</th>
+                            <th>Jistota (1-5)</th>
+                            <th>Důvod (AI)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        """
+        
+        # Zobraz všechny odpovědi detailně
+        for p in participants:
+            answers = get_answers(p["id"])
+            for ans in answers:
+                question_index = ans["question_index"]
+                respondent_answer = ans["answer"]
+                confidence = ans["confidence"]
+                ai_reason = ans["ai_reason"] or ""
+                
+                # Zjisti co byla správná odpověď
+                correct_answer = QUESTIONS[question_index]["correct"]
+                what_was = QUESTIONS[question_index].get("label", "Obrázek")
+                
+                # Kontrola správnosti
+                is_correct = "✅ Ano" if respondent_answer == correct_answer else "❌ Ne"
+                
+                # Konverze odpovědi na čeština
+                answer_display = "Fotografie" if respondent_answer == "photo" else "AI"
+                
+                html += f"""
+                        <tr>
+                            <td style="font-family: monospace; font-size: 11px;">{p['id'][:12]}...</td>
+                            <td>{p['age']}</td>
+                            <td>{p['gender']}</td>
+                            <td>Otázka {question_index + 1}</td>
+                            <td>{what_was}</td>
+                            <td><strong>{answer_display}</strong></td>
+                            <td>{is_correct}</td>
+                            <td>{confidence}/5</td>
+                            <td style="font-size: 12px; max-width: 200px;">{ai_reason[:50]}</td>
+                        </tr>
+                """
+        
+        html += """
+                    </tbody>
+                </table>
+                
                 <script>
                     function downloadCSV() {
                         window.location.href = '/api/results/export-csv';
