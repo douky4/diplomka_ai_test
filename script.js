@@ -1,10 +1,8 @@
-const images = [
-  { type: "photo", src: "images/real_001.jpg", label: "Skutečná fotografie" },
-  { type: "photo", src: "images/fake_001.png", label: "AI generovaný obrázek" },
-  { colors: ["#264653", "#7ab896"], sun: "#f4d35e", label: "Lesní jezero" }
-];
+let images = [];
+let participantId = null;
+let currentIndex = 0;
+let respondentData = {};
 
-const STORAGE_KEY = "diplomka_ai_test_state";
 const form = document.querySelector("#test-form");
 const image = document.querySelector("#test-image");
 const imageNumber = document.querySelector("#image-number");
@@ -20,28 +18,34 @@ const testScreen = document.querySelector("#test-screen");
 const ageInput = document.querySelector("#age");
 const genderInputs = Array.from(document.querySelectorAll('input[name="gender"]'));
 const experienceSelect = document.querySelector("#experience");
-let currentIndex = 0;
-let respondentData = {};
 
-const defaultQuizState = {
-  started: false,
-  currentIndex: 0,
-  answers: Array(images.length).fill(null).map(() => ({ answer: "", confidence: "", aiReason: "" })),
-  intro: { age: null, gender: "", experience: "" }
-};
+// Fetch images from API
+async function loadImages() {
+  try {
+    const response = await fetch("/api/images");
+    const data = await response.json();
+    images = data;
+    console.log("Images loaded:", images);
+  } catch (error) {
+    console.error("Chyba při načítání obrázků:", error);
+  }
+}
 
-let quizState = loadStateFromStorage();
+// Počkej na obrázky, než povolíš formulář
+loadImages().then(() => {
+  startButton.disabled = false;
+});
 
 const resetIntroBtn = document.querySelector('#reset-intro');
 if (resetIntroBtn) {
   resetIntroBtn.addEventListener('click', () => {
-    quizState.intro = { age: null, gender: "", experience: "" };
-    saveStateToStorage();
+    participantId = null;
+    currentIndex = 0;
     ageInput.value = "";
     genderInputs.forEach(g => g.checked = false);
     experienceSelect.value = "";
-    introScreen.style.display = '';
-    testScreen.style.display = 'none';
+    introScreen.classList.remove("is-hidden");
+    testScreen.classList.add("is-hidden");
   });
 }
 
@@ -58,30 +62,8 @@ function makeIllustration(item) {
 }
 
 function saveStateToStorage() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(quizState));
-  } catch (error) {
-    console.warn("Unable to save state", error);
-  }
-}
-
-function loadStateFromStorage() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return { ...defaultQuizState };
-    }
-    const parsed = JSON.parse(raw);
-    return {
-      ...defaultQuizState,
-      ...parsed,
-      answers: parsed.answers && parsed.answers.length === images.length ? parsed.answers : defaultQuizState.answers,
-      intro: { ...defaultQuizState.intro, ...(parsed.intro || {}) }
-    };
-  } catch (error) {
-    console.warn("Unable to load state", error);
-    return { ...defaultQuizState };
-  }
+  // Zrušeno - již neukládáme do localStorage
+  // Data se nyní ukládají na server
 }
 
 function updateButtonState() {
@@ -102,23 +84,17 @@ function toggleAiReasonField() {
 }
 
 function restoreQuestionState() {
-  const saved = quizState.answers[currentIndex] || { answer: "", confidence: "", aiReason: "" };
-  if (saved.answer) {
-    form.elements.answer.value = saved.answer;
-  }
-  if (saved.confidence) {
-    form.elements.confidence.value = saved.confidence;
-  }
-  aiReasonInput.value = saved.aiReason || "";
-  if (saved.answer === "ai") {
-    aiReasonWrap.classList.remove("is-hidden");
-  } else {
-    aiReasonWrap.classList.add("is-hidden");
-  }
+  // Nyní neobnovujeme stav, protože se počítá s novým participantem
+  form.reset();
   updateButtonState();
 }
 
 function showImage() {
+  if (!images || images.length === 0) {
+    console.error("Images not loaded yet");
+    return;
+  }
+
   const item = images[currentIndex];
 
   if (item.type === "photo") {
@@ -132,7 +108,9 @@ function showImage() {
   imageNumber.textContent = `Obrázek ${currentIndex + 1} z ${images.length}`;
   nextButton.textContent = currentIndex === images.length - 1 ? "Dokončit test" : "Další obrázek";
   form.reset();
-  restoreQuestionState();
+  aiReasonWrap.classList.add("is-hidden");
+  aiReasonInput.value = "";
+  updateButtonState();
 }
 
 function updateRespondentData() {
@@ -141,20 +119,16 @@ function updateRespondentData() {
     gender: genderInputs.find((input) => input.checked)?.value || "",
     experience: experienceSelect.value
   };
-  quizState.intro = { ...respondentData };
-  saveStateToStorage();
 }
 
 function updateQuizState() {
   const answer = form.elements.answer.value;
   const confidence = form.elements.confidence.value;
-  quizState.answers[currentIndex] = {
+  return {
     answer,
     confidence,
     aiReason: aiReasonInput.value
   };
-  quizState.currentIndex = currentIndex;
-  saveStateToStorage();
 }
 
 function validateIntroForm() {
@@ -182,7 +156,7 @@ introForm.addEventListener("change", () => {
   updateRespondentData();
 });
 
-introForm.addEventListener("submit", (event) => {
+introForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   if (!validateIntroForm()) {
@@ -190,49 +164,91 @@ introForm.addEventListener("submit", (event) => {
     return;
   }
 
-  quizState.started = true;
-  quizState.currentIndex = currentIndex;
-  saveStateToStorage();
+  introStatus.textContent = "Odesílám...";
 
-  console.info("Respondent data:", respondentData);
-  introScreen.classList.add("is-hidden");
-  testScreen.classList.remove("is-hidden");
-  showImage();
+  try {
+    const response = await fetch("/api/participants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(respondentData)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      introStatus.textContent = `Chyba: ${error.error || "Neznámá chyba"}`;
+      return;
+    }
+
+    const data = await response.json();
+    participantId = data.participant_id;
+    currentIndex = 0;
+
+    console.info("Participant created:", participantId);
+    introScreen.classList.add("is-hidden");
+    testScreen.classList.remove("is-hidden");
+    showImage();
+  } catch (error) {
+    introStatus.textContent = `Chyba při odesílání: ${error.message}`;
+    console.error("Error:", error);
+  }
 });
 
 function initializeApp() {
-  if (quizState.started) {
-    currentIndex = quizState.currentIndex || 0;
-    introScreen.classList.add("is-hidden");
-    testScreen.classList.remove("is-hidden");
-    ageInput.value = quizState.intro.age || "";
-    genderInputs.forEach((input) => {
-      input.checked = input.value === quizState.intro.gender;
-    });
-    experienceSelect.value = quizState.intro.experience || "";
-    showImage();
-  } else {
-    ageInput.value = quizState.intro.age || "";
-    genderInputs.forEach((input) => {
-      input.checked = input.value === quizState.intro.gender;
-    });
-    experienceSelect.value = quizState.intro.experience || "";
-    introStatus.textContent = "";
-  }
+  // Vždy zobraz úvodní screen
+  participantId = null;
+  currentIndex = 0;
+  ageInput.value = "";
+  genderInputs.forEach((input) => {
+    input.checked = false;
+  });
+  experienceSelect.value = "";
+  introStatus.textContent = "";
+  introScreen.classList.remove("is-hidden");
+  testScreen.classList.add("is-hidden");
 }
 
+// Inicializuj aplikaci
 initializeApp();
 
-form.addEventListener("submit", (event) => {
+form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  if (currentIndex < images.length - 1) {
-    currentIndex += 1;
-    showImage();
-  } else {
-    imageNumber.textContent = "Test dokončen";
-    status.textContent = "Děkujeme";
-    form.innerHTML = '<p class="intro">Vaše odpovědi byly zaznamenány pouze v rámci této ukázky. Děkujeme za účast.</p>';
+  const answerData = updateQuizState();
+
+  // Odešli odpověď na server
+  try {
+    const response = await fetch("/api/answers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        participant_id: participantId,
+        question_index: currentIndex,
+        answer: answerData.answer,
+        confidence: parseInt(answerData.confidence),
+        ai_reason: answerData.aiReason
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      status.textContent = `Chyba: ${error.error || "Neznámá chyba"}`;
+      console.error("Error:", error);
+      return;
+    }
+
+    // Přejdi na další obrázek
+    if (currentIndex < images.length - 1) {
+      currentIndex += 1;
+      showImage();
+    } else {
+      // Test je hotov
+      imageNumber.textContent = "Test dokončen";
+      status.textContent = "Děkujeme";
+      form.innerHTML = '<p class="intro">Vaše odpovědi byly uloženy. Děkujeme za účast v našem výzkumu!</p>';
+    }
+  } catch (error) {
+    status.textContent = `Chyba při odesílání: ${error.message}`;
+    console.error("Error:", error);
   }
 });
 

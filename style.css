@@ -124,6 +124,21 @@ body {
   transform: translateY(-1px);
 }
 
+#export-csv, #send-server {
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 0;
+  background: #2b8aef;
+  color: white;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+#export-csv:hover, #send-server:hover { background: #1a66cc; }
+
+#server-api { min-height: 40px; padding: 8px 10px; border-radius: 8px; border: 1px solid #d9e0ea; }
+
 .is-hidden {
   display: none !important;
 }
