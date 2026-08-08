@@ -402,6 +402,8 @@ def admin_dashboard():
 
 # ============ INIT ============
 
+# Inicializuj databázi když se app startuje (funguje i na Renderu s Gunicornem)
+initialize_database()
+
 if __name__ == "__main__":
-    initialize_database()
     app.run(debug=True, host="0.0.0.0", port=5000)
