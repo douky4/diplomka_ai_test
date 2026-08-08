@@ -15,7 +15,7 @@ IMAGE_DIR = "images"
 
 QUESTIONS = [
     {"type": "photo", "src": "images/real_001.jpg", "label": "Skutečná fotografie", "correct": "photo"},
-    {"type": "photo", "src": "images/fake_001.png", "label": "AI generovaný obrázek", "correct": "ai"},
+    {"type": "photo", "src": "images/fake_001.webp", "label": "AI generovaný obrázek", "correct": "ai"},
     {"type": "generated", "label": "Lesní jezero", "correct": "ai"},
 ]
 
