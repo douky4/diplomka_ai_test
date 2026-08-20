@@ -1,0 +1,3 @@
+image_id,file_name,label,technique,difficulty,source_dataset,source_id,subject_id,model_name,model_version,prompt,negative_prompt,seed,steps,guidance_scale,strength,sampler,width,height,compression,split,is_active
+real_001,images/real_001.jpg,photo,original,unknown,prototype,real_001,subject_001,,,,,,,,,,960,910,JPEG,pilot,true
+fake_001,images/fake_001.webp,ai,synthetic_generation,unknown,prototype,fake_001,subject_002,unknown,unknown,,,,,,,,1024,768,WEBP,pilot,true

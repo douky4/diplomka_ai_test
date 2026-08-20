@@ -25,15 +25,22 @@ async function loadImages() {
     const response = await fetch("/api/images");
     const data = await response.json();
     images = data;
-    console.log("Images loaded:", images);
+    if (!response.ok || !Array.isArray(data) || data.length === 0) {
+      throw new Error("Server nevrátil žádné testovací obrázky.");
+    }
+    console.info(`Načteno ${images.length} testovacích obrázků.`);
   } catch (error) {
     console.error("Chyba při načítání obrázků:", error);
+    introStatus.textContent = "Testovací obrázky se nepodařilo načíst. Zkuste stránku obnovit.";
+    throw error;
   }
 }
 
 // Počkej na obrázky, než povolíš formulář
 loadImages().then(() => {
   startButton.disabled = false;
+}).catch(() => {
+  startButton.disabled = true;
 });
 const resetIntroBtn = document.querySelector('#reset-intro');
 if (resetIntroBtn) {
@@ -74,7 +81,7 @@ function showImage() {
   const item = images[currentIndex];
 
   image.src = item.src;
-  image.alt = `Testovací obrázek: ${item.label}`;
+  image.alt = `Testovací obrázek číslo ${currentIndex + 1}`;
 
   imageNumber.textContent = `Obrázek ${currentIndex + 1} z ${images.length}`;
   nextButton.textContent = currentIndex === images.length - 1 ? "Dokončit test" : "Další obrázek";

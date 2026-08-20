@@ -1,6 +1,8 @@
+import csv
 import sqlite3
 import uuid
 from datetime import datetime
+from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pandas as pd
@@ -9,10 +11,58 @@ app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
 DB_PATH = "database.db"
-QUESTIONS = [
-    {"type": "photo", "src": "images/real_001.jpg", "label": "Skutečná fotografie", "correct": "photo"},
-    {"type": "photo", "src": "images/fake_001.webp", "label": "AI generovaný obrázek", "correct": "ai"},
-]
+METADATA_PATH = Path("metadata.csv")
+REQUIRED_METADATA_COLUMNS = {
+    "image_id", "file_name", "label", "technique", "difficulty",
+    "source_dataset", "subject_id", "split", "is_active",
+}
+
+
+def load_questions(metadata_path: Path = METADATA_PATH) -> list:
+    """Načte a zkontroluje aktivní testovací obrázky z CSV metadat."""
+    if not metadata_path.exists():
+        raise RuntimeError(f"Chybí soubor s metadaty: {metadata_path}")
+
+    with metadata_path.open("r", encoding="utf-8-sig", newline="") as file:
+        reader = csv.DictReader(file)
+        missing_columns = REQUIRED_METADATA_COLUMNS - set(reader.fieldnames or [])
+        if missing_columns:
+            raise RuntimeError(f"V metadata.csv chybí sloupce: {', '.join(sorted(missing_columns))}")
+
+        questions = []
+        seen_ids = set()
+        for row_number, row in enumerate(reader, start=2):
+            image_id = row["image_id"].strip()
+            file_name = row["file_name"].strip()
+            label = row["label"].strip().lower()
+            is_active = row["is_active"].strip().lower() in {"1", "true", "yes", "ano"}
+
+            if not image_id or image_id in seen_ids:
+                raise RuntimeError(f"Neplatné nebo duplicitní image_id na řádku {row_number}")
+            if label not in {"photo", "ai"}:
+                raise RuntimeError(f"Neplatný label '{label}' na řádku {row_number}")
+            if not Path(file_name).is_file():
+                raise RuntimeError(f"Obrázek na řádku {row_number} neexistuje: {file_name}")
+
+            seen_ids.add(image_id)
+            if is_active and row["split"].strip().lower() in {"pilot", "test"}:
+                questions.append({
+                    "image_id": image_id,
+                    "type": "photo",
+                    "src": file_name.replace("\\", "/"),
+                    "correct": label,
+                    "technique": row["technique"].strip() or "unknown",
+                    "difficulty": row["difficulty"].strip() or "unknown",
+                    "source_dataset": row["source_dataset"].strip(),
+                    "subject_id": row["subject_id"].strip(),
+                })
+
+    if not questions:
+        raise RuntimeError("metadata.csv neobsahuje žádné aktivní obrázky pro pilot nebo test")
+    return questions
+
+
+QUESTIONS = load_questions()
 
 AGE_GROUPS = (
     ("Do 20 let", 0, 20),
@@ -202,8 +252,15 @@ def index():
 
 @app.route("/api/images", methods=["GET"])
 def get_images():
-    """Vrátí seznam obrázků pro frontend"""
-    return jsonify(QUESTIONS)
+    """Vrátí frontendová data bez správných odpovědí a výzkumných metadat."""
+    return jsonify([
+        {
+            "image_id": question["image_id"],
+            "type": question["type"],
+            "src": question["src"],
+        }
+        for question in QUESTIONS
+    ])
 
 
 @app.route("/api/participants", methods=["POST"])

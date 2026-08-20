@@ -27,6 +27,8 @@ Aplikace poběží na `http://localhost:5000`. Administrace je dostupná na `/ad
 - `script.js` – ovládání testu a komunikace s API
 - `style.css` – vzhled testu
 - `images/` – testované obrázky
+- `metadata.csv` – popis obrázků, správné odpovědi a parametry jejich vzniku
+- `scripts/validate_dataset.py` – kontrola metadat a obrazových souborů
 - `render.yaml` – konfigurace nasazení na Render
 - `database.db` – lokální SQLite databáze, vytvoří se automaticky a není verzovaná
 
@@ -50,6 +52,18 @@ Celkové vážené skóre respondenta je průměr bodů ze všech jeho odpověd�
 Výsledky jsou dostupné v administraci, detailu respondenta, výsledkovém API a CSV exportu.
 
 Administrace navíc porovnává výsledky ve věkových skupinách do 20, 21–30, 31–40, 41–50 a 51 a více let. U každé skupiny uvádí počet respondentů a odpovědí, úspěšnost, průměrnou jistotu a vážené skóre. Stejná agregovaná data poskytuje endpoint `/api/results/age-analysis`.
+
+## Správa datasetu
+
+Seznam testovacích obrázků se načítá z `metadata.csv`. Do testu se zařadí řádky, které mají `is_active=true` a `split` nastavený na `pilot` nebo `test`. Veřejný endpoint `/api/images` posílá pouze ID a cestu obrázku; správná odpověď, technika a ostatní výzkumná metadata zůstávají na serveru.
+
+Před spuštěním nebo nasazením nového datasetu spusťte:
+
+```powershell
+.venv\Scripts\python.exe scripts\validate_dataset.py
+```
+
+Validátor kontroluje povinné sloupce, unikátní ID a soubory, platnost obrázků, rozměry, přesné duplicity a vyvážení tříd. Nový obrázek je potřeba uložit do `images/`, přidat jako nový řádek do `metadata.csv` a následně validaci zopakovat.
 
 ## Nasazení na Render
 
