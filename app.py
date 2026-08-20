@@ -347,6 +347,19 @@ def get_images():
     ])
 
 
+@app.route("/api/health", methods=["GET"])
+def health():
+    """Bez citlivých údajů ověří aplikaci a aktivní databázový backend."""
+    try:
+        with database_cursor() as (_, cursor):
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        return jsonify({"status": "ok", "database": DATABASE_BACKEND}), 200
+    except Exception:
+        app.logger.exception("Kontrola databáze selhala")
+        return jsonify({"status": "error", "database": DATABASE_BACKEND}), 503
+
+
 @app.route("/api/participants", methods=["POST"])
 def create_participant():
     """Vytvoří nového participanta a vrátí ID"""

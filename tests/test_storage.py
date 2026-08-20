@@ -48,6 +48,11 @@ class StorageIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(authorized.status_code, 200)
 
+    def test_health_reports_active_database(self):
+        response = self.client.get("/api/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), {"status": "ok", "database": "sqlite"})
+
 
 if __name__ == "__main__":
     unittest.main()
