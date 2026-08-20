@@ -6,6 +6,7 @@ Webová výzkumná aplikace, ve které respondent rozlišuje skutečné fotograf
 
 - Flask + Gunicorn
 - SQLite
+- PostgreSQL / Supabase pro trvalé produkční uložení
 - HTML, CSS a JavaScript
 - nasazení na Renderu pomocí `render.yaml`
 
@@ -75,3 +76,23 @@ gunicorn app:app
 ```
 
 Po pushnutí změn do větve propojené s Renderem se služba znovu sestaví a nasadí.
+
+### Trvalá databáze Supabase
+
+Bez `DATABASE_URL` aplikace používá lokální `database.db`, což je vhodné jen pro vývoj.
+V produkci nastavte v Renderu v **Environment**:
+
+- `DATABASE_URL` – Supabase PostgreSQL connection string pro **Session pooler** (IPv4, port 5432), včetně `sslmode=require`;
+- `ADMIN_PASSWORD` – vlastní dlouhé náhodné heslo.
+
+Po restartu aplikace se tabulky a indexy vytvoří automaticky. Každá odpověď ukládá
+volbu a jistotu respondenta, textové zdůvodnění, stabilní ID obrázku, správnou odpověď
+a výzkumná metadata platná v okamžiku odpovědi.
+
+Existující lokální data lze po nastavení `DATABASE_URL` jednorázově přenést:
+
+```text
+python scripts/migrate_sqlite_to_postgres.py
+```
+
+Hodnoty podle `.env.example` jsou pouze ukázky. Skutečné přihlašovací údaje se nesmí commitovat.

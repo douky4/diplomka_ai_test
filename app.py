@@ -1,16 +1,29 @@
 import csv
+import os
 import sqlite3
 import uuid
-from datetime import datetime
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import pandas as pd
 
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # Lokální SQLite nevyžaduje PostgreSQL ovladač.
+    psycopg = None
+    dict_row = None
+
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
-DB_PATH = "database.db"
+DB_PATH = os.environ.get("SQLITE_DB_PATH", "database.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+DATABASE_BACKEND = "postgresql" if DATABASE_URL else "sqlite"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "").strip()
 METADATA_PATH = Path("metadata.csv")
 REQUIRED_METADATA_COLUMNS = {
     "image_id", "file_name", "label", "technique", "difficulty",
@@ -90,7 +103,9 @@ def calculate_metrics(answers) -> dict:
     score_total = 0.0
     confidence_total = 0
     for answer in valid_answers:
-        is_correct = answer["answer"] == QUESTIONS[answer["question_index"]]["correct"]
+        stored_correct = answer["correct_answer"] if "correct_answer" in answer.keys() else None
+        correct_answer = stored_correct or QUESTIONS[answer["question_index"]]["correct"]
+        is_correct = answer["answer"] == correct_answer
         correct_count += int(is_correct)
         confidence_total += answer["confidence"]
         score_total += score_answer(is_correct, answer["confidence"])
@@ -129,102 +144,173 @@ def calculate_age_analysis(participants) -> list:
     return analysis
 
 
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
 def get_connection():
+    if DATABASE_BACKEND == "postgresql":
+        if psycopg is None:
+            raise RuntimeError("Pro DATABASE_URL je nutné nainstalovat psycopg")
+        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def initialize_database():
+@contextmanager
+def database_cursor():
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS participants (
-            id TEXT PRIMARY KEY,
-            age INTEGER NOT NULL,
-            gender TEXT NOT NULL,
-            experience TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        """
+    try:
+        cursor = conn.cursor()
+        yield conn, cursor
+    finally:
+        conn.close()
+
+
+def sql(query: str) -> str:
+    """Převede jednotné pojmenované placeholdery pro aktuální databázi."""
+    if DATABASE_BACKEND == "postgresql":
+        return query.replace("?", "%s")
+    return query
+
+
+def admin_authorized() -> bool:
+    supplied = (
+        request.args.get("password")
+        or request.form.get("password")
+        or request.headers.get("X-Admin-Password")
     )
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS answers (
-            id TEXT PRIMARY KEY,
-            participant_id TEXT NOT NULL,
-            question_index INTEGER NOT NULL,
-            answer TEXT NOT NULL,
-            confidence INTEGER NOT NULL,
-            ai_reason TEXT,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (participant_id) REFERENCES participants(id),
-            UNIQUE(participant_id, question_index)
+    return bool(ADMIN_PASSWORD) and supplied == ADMIN_PASSWORD
+
+
+def admin_api_required(view):
+    @wraps(view)
+    def protected_view(*args, **kwargs):
+        if not admin_authorized():
+            return jsonify({"error": "Neoprávněný přístup"}), 403
+        return view(*args, **kwargs)
+    return protected_view
+
+
+def initialize_database():
+    with database_cursor() as (conn, cursor):
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS participants (
+                id TEXT PRIMARY KEY,
+                age INTEGER NOT NULL CHECK (age > 0),
+                gender TEXT NOT NULL,
+                experience TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
         )
-        """
-    )
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS answers (
+                id TEXT PRIMARY KEY,
+                participant_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+                question_index INTEGER NOT NULL,
+                image_id TEXT,
+                answer TEXT NOT NULL CHECK (answer IN ('ai', 'photo')),
+                correct_answer TEXT,
+                confidence INTEGER NOT NULL CHECK (confidence BETWEEN 1 AND 5),
+                ai_reason TEXT,
+                technique TEXT,
+                difficulty TEXT,
+                source_dataset TEXT,
+                subject_id TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(participant_id, question_index)
+            )
+            """
+        )
+
+        # Doplní sloupce i do databáze vytvořené starší verzí aplikace.
+        extra_columns = {
+            "image_id": "TEXT",
+            "correct_answer": "TEXT",
+            "technique": "TEXT",
+            "difficulty": "TEXT",
+            "source_dataset": "TEXT",
+            "subject_id": "TEXT",
+        }
+        if DATABASE_BACKEND == "postgresql":
+            for column, column_type in extra_columns.items():
+                cursor.execute(f"ALTER TABLE answers ADD COLUMN IF NOT EXISTS {column} {column_type}")
+        else:
+            existing = {row[1] for row in cursor.execute("PRAGMA table_info(answers)").fetchall()}
+            for column, column_type in extra_columns.items():
+                if column not in existing:
+                    cursor.execute(f"ALTER TABLE answers ADD COLUMN {column} {column_type}")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_answers_participant ON answers(participant_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_answers_image ON answers(image_id)")
+        conn.commit()
 
 
 def save_participant(age: int, gender: str, experience: str) -> str:
     participant_id = str(uuid.uuid4())
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO participants (id, age, gender, experience, created_at) VALUES (?, ?, ?, ?, ?)",
-        (participant_id, age, gender, experience, datetime.utcnow().isoformat()),
-    )
-    conn.commit()
-    conn.close()
+    with database_cursor() as (conn, cursor):
+        cursor.execute(
+            sql("INSERT INTO participants (id, age, gender, experience, created_at) VALUES (?, ?, ?, ?, ?)"),
+            (participant_id, age, gender, experience, utc_now()),
+        )
+        conn.commit()
     return participant_id
 
 
 def save_answer(participant_id: str, question_index: int, answer: str, confidence: int, ai_reason: str = None):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR REPLACE INTO answers (id, participant_id, question_index, answer, confidence, ai_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (
-            str(uuid.uuid4()),
-            participant_id,
-            question_index,
-            answer,
-            confidence,
-            ai_reason if ai_reason else None,
-            datetime.utcnow().isoformat(),
-        ),
-    )
-    conn.commit()
-    conn.close()
+    question = QUESTIONS[question_index]
+    query = """
+        INSERT INTO answers (
+            id, participant_id, question_index, image_id, answer, correct_answer,
+            confidence, ai_reason, technique, difficulty, source_dataset,
+            subject_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(participant_id, question_index) DO UPDATE SET
+            image_id = excluded.image_id,
+            answer = excluded.answer,
+            correct_answer = excluded.correct_answer,
+            confidence = excluded.confidence,
+            ai_reason = excluded.ai_reason,
+            technique = excluded.technique,
+            difficulty = excluded.difficulty,
+            source_dataset = excluded.source_dataset,
+            subject_id = excluded.subject_id,
+            created_at = excluded.created_at
+    """
+    with database_cursor() as (conn, cursor):
+        cursor.execute(sql(query), (
+            str(uuid.uuid4()), participant_id, question_index, question["image_id"],
+            answer, question["correct"], confidence, ai_reason or None,
+            question["technique"], question["difficulty"],
+            question["source_dataset"], question["subject_id"], utc_now(),
+        ))
+        conn.commit()
 
 
 def get_participant(participant_id: str):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM participants WHERE id = ?", (participant_id,))
-    participant = cursor.fetchone()
-    conn.close()
-    return participant
+    with database_cursor() as (_, cursor):
+        cursor.execute(sql("SELECT * FROM participants WHERE id = ?"), (participant_id,))
+        return cursor.fetchone()
 
 
 def get_answers(participant_id: str):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT question_index, answer, confidence, ai_reason FROM answers WHERE participant_id = ? ORDER BY question_index",
-        (participant_id,),
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+    with database_cursor() as (_, cursor):
+        cursor.execute(
+            sql("""SELECT question_index, image_id, answer, correct_answer, confidence,
+                       ai_reason, technique, difficulty, source_dataset, subject_id, created_at
+                    FROM answers WHERE participant_id = ? ORDER BY question_index"""),
+            (participant_id,),
+        )
+        return cursor.fetchall()
 
 
 def get_all_participants():
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute(
+    with database_cursor() as (_, cursor):
+        cursor.execute(
         """
         SELECT p.id, p.age, p.gender, p.experience, p.created_at,
             COUNT(a.id) AS answers_count,
@@ -236,10 +322,8 @@ def get_all_participants():
         GROUP BY p.id
         ORDER BY p.created_at DESC
         """
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+        )
+        return cursor.fetchall()
 
 
 # ============ API ENDPOINTS ============
@@ -316,6 +400,7 @@ def submit_answer():
 
 
 @app.route("/api/participants/<participant_id>", methods=["GET"])
+@admin_api_required
 def get_participant_data(participant_id):
     """Vrátí data konkrétního participanta"""
     try:
@@ -335,8 +420,15 @@ def get_participant_data(participant_id):
                 {
                     "question_index": ans["question_index"],
                     "answer": ans["answer"],
+                    "image_id": ans["image_id"],
+                    "correct_answer": ans["correct_answer"],
                     "confidence": ans["confidence"],
-                    "ai_reason": ans["ai_reason"]
+                    "ai_reason": ans["ai_reason"],
+                    "technique": ans["technique"],
+                    "difficulty": ans["difficulty"],
+                    "source_dataset": ans["source_dataset"],
+                    "subject_id": ans["subject_id"],
+                    "created_at": ans["created_at"],
                 } for ans in answers
             ]
         }), 200
@@ -345,6 +437,7 @@ def get_participant_data(participant_id):
 
 
 @app.route("/api/results", methods=["GET"])
+@admin_api_required
 def get_results():
     """Vrátí všechny výsledky testů (admin endpoint)"""
     try:
@@ -373,6 +466,7 @@ def get_results():
 
 
 @app.route("/api/results/export-csv", methods=["GET"])
+@admin_api_required
 def export_csv():
     """Exportuj výsledky jako CSV"""
     try:
@@ -384,20 +478,27 @@ def export_csv():
                 question_index = ans["question_index"]
                 if question_index not in range(len(QUESTIONS)):
                     continue
-                is_correct = ans["answer"] == QUESTIONS[question_index]["correct"]
+                correct_answer = ans["correct_answer"] or QUESTIONS[question_index]["correct"]
+                is_correct = ans["answer"] == correct_answer
                 data.append({
                     "participant_id": p["id"],
                     "age": p["age"],
                     "gender": p["gender"],
                     "experience": p["experience"],
                     "question_index": question_index,
-                    "correct_answer": QUESTIONS[question_index]["correct"],
+                    "image_id": ans["image_id"] or QUESTIONS[question_index]["image_id"],
+                    "correct_answer": correct_answer,
                     "answer": ans["answer"],
                     "is_correct": is_correct,
                     "confidence": ans["confidence"],
                     "weighted_score": score_answer(is_correct, ans["confidence"]),
                     "ai_reason": ans["ai_reason"],
-                    "created_at": p["created_at"],
+                    "technique": ans["technique"],
+                    "difficulty": ans["difficulty"],
+                    "source_dataset": ans["source_dataset"],
+                    "subject_id": ans["subject_id"],
+                    "participant_created_at": p["created_at"],
+                    "answer_created_at": ans["created_at"],
                 })
         
         df = pd.DataFrame(data)
@@ -412,6 +513,7 @@ def export_csv():
 
 
 @app.route("/api/results/age-analysis", methods=["GET"])
+@admin_api_required
 def get_age_analysis():
     """Vrátí souhrn úspěšnosti, jistoty a skóre podle věkových skupin."""
     try:
@@ -424,10 +526,9 @@ def get_age_analysis():
 def respondent_detail(participant_id):
     """Detail respondenta s jeho odpověďmi"""
     
-    ADMIN_PASSWORD = "adminFilip"
     password = request.args.get("password")
     
-    if password != ADMIN_PASSWORD:
+    if not admin_authorized():
         return "Chyba: nesprávné heslo", 403
     
     try:
@@ -499,7 +600,7 @@ def respondent_detail(participant_id):
             confidence = ans["confidence"]
             ai_reason = ans["ai_reason"] or "-"
             
-            correct_answer = QUESTIONS[question_index]["correct"]
+            correct_answer = ans["correct_answer"] or QUESTIONS[question_index]["correct"]
             what_was = QUESTIONS[question_index].get("label", "Obrázek")
             
             is_correct = respondent_answer == correct_answer
@@ -545,13 +646,11 @@ def respondent_detail(participant_id):
 def admin_dashboard():
     """Admin stránka - vidíš všechna data (s heslem)"""
     
-    ADMIN_PASSWORD = "adminFilip"
-    
     # Kontrola hesla
     password = request.args.get("password") or request.form.get("password")
     
     # Pokud heslo není správné, zobraz login formu
-    if password != ADMIN_PASSWORD:
+    if not admin_authorized():
         login_html = """
         <!DOCTYPE html>
         <html lang="cs">
@@ -807,7 +906,7 @@ def admin_dashboard():
                 ai_reason = ans["ai_reason"] or ""
                 
                 # Zjisti co byla správná odpověď
-                correct_answer = QUESTIONS[question_index]["correct"]
+                correct_answer = ans["correct_answer"] or QUESTIONS[question_index]["correct"]
                 what_was = QUESTIONS[question_index].get("label", "Obrázek")
                 
                 # Kontrola správnosti
@@ -839,7 +938,8 @@ def admin_dashboard():
                 
                 <script>
                     function downloadCSV() {
-                        window.location.href = '/api/results/export-csv';
+                        const password = new URLSearchParams(window.location.search).get('password');
+                        window.location.href = '/api/results/export-csv?password=' + encodeURIComponent(password || '');
                     }
                 </script>
             </div>
