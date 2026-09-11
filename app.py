@@ -1,6 +1,7 @@
 import csv
 import os
 import sqlite3
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -23,6 +24,7 @@ CORS(app)
 DB_PATH = os.environ.get("SQLITE_DB_PATH", "database.db")
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 DATABASE_BACKEND = "postgresql" if DATABASE_URL else "sqlite"
+DATABASE_CONNECT_TIMEOUT = int(os.environ.get("DATABASE_CONNECT_TIMEOUT", "10"))
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "").strip()
 METADATA_PATH = Path("metadata.csv")
 REQUIRED_METADATA_COLUMNS = {
@@ -152,7 +154,11 @@ def get_connection():
     if DATABASE_BACKEND == "postgresql":
         if psycopg is None:
             raise RuntimeError("Pro DATABASE_URL je nutné nainstalovat psycopg")
-        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        return psycopg.connect(
+            DATABASE_URL,
+            row_factory=dict_row,
+            connect_timeout=DATABASE_CONNECT_TIMEOUT,
+        )
 
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -250,7 +256,23 @@ def initialize_database():
         conn.commit()
 
 
+_database_initialized = False
+_database_init_lock = threading.Lock()
+
+
+def ensure_database_initialized():
+    """Initialize storage lazily so an unavailable database cannot block web startup."""
+    global _database_initialized
+    if _database_initialized:
+        return
+    with _database_init_lock:
+        if not _database_initialized:
+            initialize_database()
+            _database_initialized = True
+
+
 def save_participant(age: int, gender: str, experience: str) -> str:
+    ensure_database_initialized()
     participant_id = str(uuid.uuid4())
     with database_cursor() as (conn, cursor):
         cursor.execute(
@@ -262,6 +284,7 @@ def save_participant(age: int, gender: str, experience: str) -> str:
 
 
 def save_answer(participant_id: str, question_index: int, answer: str, confidence: int, ai_reason: str = None):
+    ensure_database_initialized()
     question = QUESTIONS[question_index]
     query = """
         INSERT INTO answers (
@@ -292,12 +315,14 @@ def save_answer(participant_id: str, question_index: int, answer: str, confidenc
 
 
 def get_participant(participant_id: str):
+    ensure_database_initialized()
     with database_cursor() as (_, cursor):
         cursor.execute(sql("SELECT * FROM participants WHERE id = ?"), (participant_id,))
         return cursor.fetchone()
 
 
 def get_answers(participant_id: str):
+    ensure_database_initialized()
     with database_cursor() as (_, cursor):
         cursor.execute(
             sql("""SELECT question_index, image_id, answer, correct_answer, confidence,
@@ -309,6 +334,7 @@ def get_answers(participant_id: str):
 
 
 def get_all_participants():
+    ensure_database_initialized()
     with database_cursor() as (_, cursor):
         cursor.execute(
         """
@@ -351,6 +377,7 @@ def get_images():
 def health():
     """Bez citlivých údajů ověří aplikaci a aktivní databázový backend."""
     try:
+        ensure_database_initialized()
         with database_cursor() as (_, cursor):
             cursor.execute("SELECT 1")
             cursor.fetchone()
@@ -358,6 +385,12 @@ def health():
     except Exception:
         app.logger.exception("Kontrola databáze selhala")
         return jsonify({"status": "error", "database": DATABASE_BACKEND}), 503
+
+
+@app.route("/api/live", methods=["GET"])
+def live():
+    """Liveness check independent of external database availability."""
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route("/api/participants", methods=["POST"])
@@ -966,9 +999,6 @@ def admin_dashboard():
 
 
 # ============ INIT ============
-
-# Inicializuj databázi když se app startuje (funguje i na Renderu s Gunicornem)
-initialize_database()
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)

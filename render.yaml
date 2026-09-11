@@ -4,7 +4,10 @@ services:
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --timeout 60 app:app
+    healthCheckPath: /api/live
     envVars:
       - key: PYTHON_VERSION
         value: 3.11
+      - key: DATABASE_CONNECT_TIMEOUT
+        value: 10
