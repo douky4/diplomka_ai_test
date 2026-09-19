@@ -1,0 +1,122 @@
+[
+  {
+    "id": "pilot_ai_003",
+    "source": "IMG_0233.JPEG",
+    "prompt": "Use case: photorealistic-natural. Generate one entirely new synthetic photograph from this text description only for a research pilot. Portrait 3:4. Ordinary smartphone travel snapshot of five white wind turbines across dry rocky brown rolling hills, largest turbine right of center, smaller turbines receding left and center, sparse scrub and angular stones in foreground, vast clear blue sky filling upper half, bright afternoon sun from left, distant hazy mountains. Everyday amateur exposure and natural irregular textures; physically plausible three-bladed turbines. No cinematic grading, no illustration, no border, no added text or watermark.",
+    "difficulty_intended": "hard",
+    "deliberate_cues": []
+  },
+  {
+    "id": "pilot_ai_004",
+    "source": "IMG_0737.JPEG",
+    "difficulty_intended": "hard",
+    "deliberate_cues": [],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 9:16. A narrow rocky forest gorge with a shallow stream winding from the center background toward the bottom left, wet irregular grey boulders in foreground, steep moss-covered rock walls especially right, hanging bare conifer branches above, dense green leaves, small ferns and damp grasses. Dappled soft daylight, ordinary hiking smartphone snapshot. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_005",
+    "source": "IMG_0744.JPEG",
+    "difficulty_intended": "medium",
+    "deliberate_cues": [
+      "slightly over-polished HDR",
+      "repetitive tree textures"
+    ],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Landscape 4:3. Wide elevated view across a central European village in a green valley, small pale houses with red roofs across the lower third, patchwork meadows and dark conifer-covered rounded hills, large blue sky with scattered small white clouds taking upper half, midday summer light. Slightly over-polished HDR phone-photo appearance and slightly repetitive distant tree textures, still photograph-like. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_006",
+    "source": "IMG_2139.JPEG",
+    "difficulty_intended": "medium",
+    "deliberate_cues": [
+      "overly regular coat pattern",
+      "smooth fur and glossy eyes"
+    ],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 3:4. Two reticulated giraffes in a sunny zoo enclosure. One close in the left center facing camera with head slightly turned, neck and long legs visible, another further back on right. Bare feeding branches cross in front, green trees and wire fence behind, beige dirt floor and large grey foreground rocks, blue sky. Mildly too smooth fur and overly regular reticulated coat pattern, slightly glossy eyes, but plausible anatomy and ordinary travel composition. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_007",
+    "source": "7afe5a1e-505d-4699-ac15-f0e65578de0d.JPEG",
+    "difficulty_intended": "easy",
+    "deliberate_cues": [
+      "uniform silky fur",
+      "malformed paw",
+      "garbled menu text"
+    ],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 3:4. Looking down at a large fluffy silver-grey tabby Maine Coon cat reclining diagonally across a round pale yellow cafe table, bushy tail curving at bottom, head upper center turned right and paw stretched toward a glass sugar dispenser. Honey-brown bentwood chairs around table, cat portrait cushion on right chair, pink printed menu behind cat, warm beige wall and grey tiled floor, green exit sign upper left. Make a recognizably synthetic but photo-like version: overly silky uniform fur, a slightly malformed extended paw, and menu writing resembling garbled letter-like marks. No extreme deformation. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_008",
+    "source": "IMG_2167.JPEG",
+    "difficulty_intended": "easy",
+    "deliberate_cues": [
+      "inconsistent staircase rail connections",
+      "waxy foliage"
+    ],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 3:4. Interior of a lush tropical greenhouse viewed from an elevated walkway, dense green leaves and ferns throughout, bright glass roof with white beams above, ornate white cast iron spiral staircase descending along right side, central white pole and filigree lattice steps. Make a photo-like but more recognizable synthetic version: several staircase railing struts merge into neighboring bars and the lattice step geometry has inconsistent connections, foliage slightly waxy. Keep overall staircase shape readable. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_009",
+    "source": "IMG_2190.JPEG",
+    "difficulty_intended": "medium",
+    "deliberate_cues": [
+      "overly regular lattice",
+      "over-smoothed water"
+    ],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 3:4. Sunny botanical garden pond with small white wooden footbridge crossing horizontally from left toward center, white diamond lattice railings, drooping willow on left, dense trees and shrubs around pond, purple flowering spikes in left foreground, reeds on right and leafy plants below. Blue sky above, still dark pond reflecting bridge and greenery. Photo-like with slightly too smooth water and overly regular repeating bridge lattice; keep broadly plausible reflections. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_010",
+    "source": "IMG_2329.JPEG",
+    "difficulty_intended": "easy",
+    "deliberate_cues": [
+      "garbled chalkboard lettering",
+      "merged tap fittings"
+    ],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 3:4. Craft beer bar interior without people. Large wooden framed black chalkboard high on pale concrete wall with two columns and sixteen rows of colorful handwritten beer names and prices, trailing ivy at corners. Two smaller chalkboards beneath on left, long row of wooden-handled metal beer taps on right, wooden counter foreground with coasters, glasses, purple drink can, clear water bottle and snacks, bottles behind. Create a photo-like synthetic version with conspicuously garbled pseudo-lettering in several menu rows and subtly merged adjacent beer-tap fittings. No caption or AI label. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_011",
+    "source": "IMG_6210.JPEG",
+    "difficulty_intended": "medium",
+    "deliberate_cues": [
+      "over-polished surfaces",
+      "inconsistent handle proportions"
+    ],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Landscape 4:3. Ordinary lived-in domestic L-shaped kitchen with honey oak and dark brown cabinets, beige countertop, white tiled backsplash with narrow decorative border, sink under very bright left window, dish rack and dishes, red pot on cooktop rear center-right beneath stainless hood, built-in oven at far right, white tiled floor. Cropped dining table with grey patterned cloth and metal chairs at right foreground, bright balcony door far left. Mildly polished synthetic surfaces and slightly inconsistent cabinet handle proportions but realistic room geometry. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_012",
+    "source": "IMG_6434.JPEG",
+    "difficulty_intended": "hard",
+    "deliberate_cues": [],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 3:4. A single light grey-brown dairy cow standing broadside on a grassy rocky alpine slope, head turned toward camera on right, full body and hooves visible, black collar with metal cowbell and yellow ear tags. Green rolling pasture and thin electric fence behind, two jagged grey mountain peaks in distance, pale blue sky with small white clouds, ordinary midday travel snapshot with foreground cow partly shaded. Natural anatomy, irregular fur, realistic light and texture. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_013",
+    "source": "IMG_8806.JPEG",
+    "difficulty_intended": "easy",
+    "deliberate_cues": [
+      "extra foreleg",
+      "merged background legs"
+    ],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 3:4. Six brown-and-white cows gathered on steep green alpine meadow in mist, nearest cow lower center facing camera, other cows staggered behind, yellow ear tags and small cowbells, blue drinking bowl set into old black tire on right, another bowl left, dark conifer forest disappearing into fog, small cable-car cabin suspended on diagonal cable near upper left, thin fence wire at bottom. Photo-like synthetic version with a subtly duplicated extra foreleg on nearest cow and slightly merged legs of overlapping background cows; keep scene otherwise credible and non-cartoon. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_014",
+    "source": "IMG_9257.JPEG",
+    "difficulty_intended": "hard",
+    "deliberate_cues": [],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 3:4. Quiet pebbly Mediterranean shoreline under heavy grey storm clouds. Pale pebble beach curves from bottom foreground toward left middle, clear calm turquoise-grey sea occupies right, weathered white seaside building with shutters and small balcony at upper left above rough stone seawall, low dark pier in middle distance, tiny white boat offshore and distant low coast. Slightly tilted handheld smartphone composition, muted natural colors, realistic small ripples and irregular pebbles. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  },
+  {
+    "id": "pilot_ai_015",
+    "source": "IMG_9440.JPEG",
+    "difficulty_intended": "medium",
+    "deliberate_cues": [
+      "exaggerated turquoise",
+      "over-crisp rocks",
+      "silky water"
+    ],
+    "prompt": "Use case: photorealistic-natural. Asset type: synthetic image for a visual AI-recognition research pilot. Generate one new image from this text description only. Portrait 3:4. Alpine lake with milky turquoise water in lower third and a large pale grey ridged boulder protruding near lower left-center, conifer-covered slope beyond, immense rugged grey limestone mountain towers dominating center, scree slopes and a few small snow patches, vivid blue sky with wispy white clouds. Photo-like travel shot with slightly exaggerated turquoise saturation, overly crisp rock microtexture and somewhat too silky water, no fantasy elements. Single image, no collage, no border, no added watermark or explanatory text. Preserve ordinary photographic framing."
+  }
+]

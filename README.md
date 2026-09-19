@@ -56,7 +56,24 @@ Administrace navíc porovnává výsledky ve věkových skupinách do 20, 21–3
 
 ## Správa datasetu
 
-Seznam testovacích obrázků se načítá z `metadata.csv`. Do testu se zařadí řádky, které mají `is_active=true` a `split` nastavený na `pilot` nebo `test`. Veřejný endpoint `/api/images` posílá pouze ID a cestu obrázku; správná odpověď, technika a ostatní výzkumná metadata zůstávají na serveru.
+Seznam testovacích obrázků se načítá z `metadata.csv`. Do testu se zařadí řádky, které mají `is_active=true` a `split` nastavený na `pilot` nebo `test`. Aktivních je 30 obrázků (15 fotografií a 15 AI variant), propojených společným `subject_id` do 15 dvojic. Dvě původní prototypové položky zůstávají neaktivní pro dohledání historie.
+
+Při založení respondenta server v jedné transakci uloží 15 otázek do `quiz_assignments`: jednu verzi z každé dvojice, 7 nebo 8 AI obrázků a náhodné pořadí. Následující respondent dostane opačné verze, opět náhodně seřazené. `allocation_state` uchovává stav vyvažování i po restartu; databázový zámek brání souběžnému přidělení stejného bloku. Vyvažuje se počet přidělení, nikoli dokončených odpovědí.
+
+`/api/images?participant_id=...` vrací pouze náhodné veřejné identifikátory a neutrální odkazy `/api/media/...`. Odpověď musí obsahovat přidělený veřejný `image_id` i `question_index`; server ověří shodu a uloží skutečný výzkumný identifikátor, správnou odpověď, jistotu 1–5, zdůvodnění a neměnný snímek metadat (`metadata_snapshot`). Správná odpověď ani názvy zdrojových souborů se seznamem otázek neposílají. Soubory projektu nejsou veřejně servírovány.
+
+Prohlížeč uchovává identifikátor testu v `localStorage`. Po obnovení načte stejné přidělení a pokračuje první nezodpovězenou otázkou; dokončený test zůstane dokončený. Toto chrání pokračování v jednom prohlížeči, nikoli opakovanou účast stejného člověka z jiného zařízení nebo po vymazání úložiště.
+
+Administrace `/admin/images` a chráněné API `/api/results/image-analysis` ukazují náhledy, počty přidělení a odpovědí, volby AI/fotografie, rozložení jistoty pro správné i chybné odpovědi, chyby s jistotou 4–5 a úplná zdůvodnění. Odkaz je v hlavní administraci. CSV export obsahuje i zamýšlenou obtížnost a záměrně požadovaná vodítka; skutečná obtížnost zůstává `unknown` do vyhodnocení pilotu.
+
+Při prvním databázovém požadavku nové verze se automaticky doplní tabulky a sloupec `metadata_snapshot` ve stávajícím SQLite i PostgreSQL/Supabase. Dosavadní odpovědi se nemažou. Obrázky jsou soubory v GitHubu/Renderu, odpovědi a přidělení jsou v databázi Supabase.
+
+Kontroly implementace:
+
+```powershell
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+node -e "import('./tests/test_quiz_frontend.mjs').then(async m => console.log(await m.run()))"
+```
 
 Před spuštěním nebo nasazením nového datasetu spusťte:
 

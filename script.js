@@ -2,6 +2,8 @@ let images = [];
 let participantId = null;
 let currentIndex = 0;
 let respondentData = {};
+let submitting = false;
+const sessionKey = "ai-quiz-participant-v2";
 
 const form = document.querySelector("#test-form");
 const image = document.querySelector("#test-image");
@@ -22,7 +24,7 @@ const experienceSelect = document.querySelector("#experience");
 // Fetch images from API
 async function loadImages() {
   try {
-    const response = await fetch("/api/images");
+    const response = await fetch(`/api/images?participant_id=${encodeURIComponent(participantId)}`);
     const data = await response.json();
     images = data;
     if (!response.ok || !Array.isArray(data) || data.length === 0) {
@@ -36,16 +38,11 @@ async function loadImages() {
   }
 }
 
-// Počkej na obrázky, než povolíš formulář
-loadImages().then(() => {
-  startButton.disabled = false;
-}).catch(() => {
-  startButton.disabled = true;
-});
 const resetIntroBtn = document.querySelector('#reset-intro');
 if (resetIntroBtn) {
   resetIntroBtn.addEventListener('click', () => {
     participantId = null;
+    localStorage.removeItem(sessionKey);
     currentIndex = 0;
     ageInput.value = "";
     genderInputs.forEach(g => g.checked = false);
@@ -58,7 +55,7 @@ if (resetIntroBtn) {
 function updateButtonState() {
   const hasAnswer = form.elements.answer.value !== "";
   const hasConfidence = form.elements.confidence.value !== "";
-  nextButton.disabled = !(hasAnswer && hasConfidence);
+  nextButton.disabled = submitting || !(hasAnswer && hasConfidence);
   status.textContent = nextButton.disabled ? "Vyberte odpověď" : "Připraveno";
 }
 
@@ -136,6 +133,7 @@ introForm.addEventListener("change", () => {
 
 introForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (submitting) return;
 
   if (!validateIntroForm()) {
     introStatus.textContent = "Vyplňte všechna pole před pokračováním.";
@@ -143,9 +141,12 @@ introForm.addEventListener("submit", async (event) => {
   }
 
   introStatus.textContent = "Odesílám...";
+  submitting = true;
+  startButton.disabled = true;
 
   try {
-    const response = await fetch("/api/participants", {
+    if (!participantId) {
+      const response = await fetch("/api/participants", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(respondentData)
@@ -157,9 +158,12 @@ introForm.addEventListener("submit", async (event) => {
       return;
     }
 
-    const data = await response.json();
-    participantId = data.participant_id;
+      const data = await response.json();
+      participantId = data.participant_id;
+      localStorage.setItem(sessionKey, participantId);
+    }
     currentIndex = 0;
+    await loadImages();
 
     console.info("Participant created:", participantId);
     introScreen.classList.add("is-hidden");
@@ -168,10 +172,14 @@ introForm.addEventListener("submit", async (event) => {
   } catch (error) {
     introStatus.textContent = `Chyba při odesílání: ${error.message}`;
     console.error("Error:", error);
+  } finally {
+    submitting = false;
+    startButton.disabled = false;
+    if (participantId && images.length) updateButtonState();
   }
 });
 
-function initializeApp() {
+async function initializeApp() {
   // Vždy zobraz úvodní screen
   participantId = null;
   currentIndex = 0;
@@ -183,6 +191,44 @@ function initializeApp() {
   introStatus.textContent = "";
   introScreen.classList.remove("is-hidden");
   testScreen.classList.add("is-hidden");
+  startButton.disabled = false;
+  const savedId = localStorage.getItem(sessionKey);
+  if (savedId) {
+    startButton.disabled = true;
+    introStatus.textContent = "Obnovuji rozpracovaný test...";
+    try {
+      const response = await fetch(`/api/quiz/${encodeURIComponent(savedId)}`);
+      if (response.status === 404 || response.status === 409) {
+        localStorage.removeItem(sessionKey);
+        introStatus.textContent = "Předchozí test již není dostupný. Můžete zahájit nový.";
+        startButton.disabled = false;
+        return;
+      }
+      if (!response.ok) throw new Error("Test se nepodařilo obnovit");
+      const progress = await response.json();
+      participantId = savedId;
+      await loadImages();
+      currentIndex = progress.next_index;
+      introScreen.classList.add("is-hidden");
+      testScreen.classList.remove("is-hidden");
+      if (currentIndex >= images.length) finishQuiz();
+      else showImage();
+    } catch (error) {
+      introStatus.textContent = "Test se nepodařilo obnovit. Obnovte stránku a zkuste to znovu.";
+    }
+  }
+}
+
+function finishQuiz() {
+  imageNumber.textContent = "Test dokončen";
+  status.textContent = "Děkujeme";
+  image.removeAttribute("src");
+  image.classList.add("is-hidden");
+  form.innerHTML = '<p class="intro">Vaše odpovědi byly uloženy. Děkujeme za účast v našem výzkumu!</p><button id="new-participant" type="button">Test pro dalšího respondenta</button>';
+  document.querySelector('#new-participant').addEventListener('click', () => {
+    localStorage.removeItem(sessionKey);
+    window.location.reload();
+  });
 }
 
 // Inicializuj aplikaci
@@ -190,8 +236,11 @@ initializeApp();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (submitting || !form.elements.answer.value || !form.elements.confidence.value) return;
 
   const answerData = updateQuizState();
+  submitting = true;
+  nextButton.disabled = true;
 
   // Odešli odpověď na server
   try {
@@ -201,6 +250,7 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         participant_id: participantId,
         question_index: currentIndex,
+        image_id: images[currentIndex].image_id,
         answer: answerData.answer,
         confidence: parseInt(answerData.confidence),
         ai_reason: answerData.aiReason
@@ -220,12 +270,13 @@ form.addEventListener("submit", async (event) => {
       showImage();
     } else {
       // Test je hotov
-      imageNumber.textContent = "Test dokončen";
-      status.textContent = "Děkujeme";
-      form.innerHTML = '<p class="intro">Vaše odpovědi byly uloženy. Děkujeme za účast v našem výzkumu!</p>';
+      finishQuiz();
     }
   } catch (error) {
     status.textContent = `Chyba při odesílání: ${error.message}`;
     console.error("Error:", error);
+  } finally {
+    submitting = false;
+    if (form.elements.answer) nextButton.disabled = !(form.elements.answer.value && form.elements.confidence.value);
   }
 });

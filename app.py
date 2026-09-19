@@ -3,11 +3,17 @@ import os
 import sqlite3
 import threading
 import uuid
+import json
+import hashlib
+import secrets
+import mimetypes
+from html import escape
+from urllib.parse import urlencode
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, abort, render_template
 from flask_cors import CORS
 import pandas as pd
 
@@ -18,7 +24,7 @@ except ImportError:  # Lokální SQLite nevyžaduje PostgreSQL ovladač.
     psycopg = None
     dict_row = None
 
-app = Flask(__name__, static_folder=".", static_url_path="")
+app = Flask(__name__, static_folder=None)
 CORS(app)
 
 DB_PATH = os.environ.get("SQLITE_DB_PATH", "database.db")
@@ -33,7 +39,7 @@ REQUIRED_METADATA_COLUMNS = {
 }
 
 
-def load_questions(metadata_path: Path = METADATA_PATH) -> list:
+def load_questions(metadata_path: Path = METADATA_PATH, include_inactive=False) -> list:
     """Načte a zkontroluje aktivní testovací obrázky z CSV metadat."""
     if not metadata_path.exists():
         raise RuntimeError(f"Chybí soubor s metadaty: {metadata_path}")
@@ -60,7 +66,7 @@ def load_questions(metadata_path: Path = METADATA_PATH) -> list:
                 raise RuntimeError(f"Obrázek na řádku {row_number} neexistuje: {file_name}")
 
             seen_ids.add(image_id)
-            if is_active and row["split"].strip().lower() in {"pilot", "test"}:
+            if include_inactive or (is_active and row["split"].strip().lower() in {"pilot", "test"}):
                 questions.append({
                     "image_id": image_id,
                     "type": "photo",
@@ -70,6 +76,7 @@ def load_questions(metadata_path: Path = METADATA_PATH) -> list:
                     "difficulty": row["difficulty"].strip() or "unknown",
                     "source_dataset": row["source_dataset"].strip(),
                     "subject_id": row["subject_id"].strip(),
+                    "metadata": dict(row),
                 })
 
     if not questions:
@@ -78,6 +85,19 @@ def load_questions(metadata_path: Path = METADATA_PATH) -> list:
 
 
 QUESTIONS = load_questions()
+ALL_QUESTIONS = {q["image_id"]: q for q in load_questions(include_inactive=True)}
+LEGACY_QUESTIONS = [ALL_QUESTIONS[k] for k in ("real_001", "fake_001")]
+
+
+def stored_question(answer):
+    snapshot = answer["metadata_snapshot"] if "metadata_snapshot" in answer.keys() else None
+    if snapshot:
+        return json.loads(snapshot)
+    image_id = answer["image_id"] if "image_id" in answer.keys() else None
+    if image_id:
+        return ALL_QUESTIONS.get(image_id, {"image_id": image_id, "correct": answer["correct_answer"]})
+    index = answer["question_index"]
+    return LEGACY_QUESTIONS[index] if 0 <= index < len(LEGACY_QUESTIONS) else {}
 
 AGE_GROUPS = (
     ("Do 20 let", 0, 20),
@@ -97,7 +117,7 @@ def score_answer(is_correct: bool, confidence: int) -> float:
 
 def calculate_metrics(answers) -> dict:
     """Spočítá běžnou úspěšnost, jistotu a jistotou vážené skóre."""
-    valid_answers = [a for a in answers if 0 <= a["question_index"] < len(QUESTIONS)]
+    valid_answers = [a for a in answers if a["correct_answer"] or stored_question(a).get("correct")]
     if not valid_answers:
         return {"answer_count": 0, "correct_count": 0, "accuracy": 0.0, "avg_confidence": None, "weighted_score": None}
 
@@ -106,7 +126,7 @@ def calculate_metrics(answers) -> dict:
     confidence_total = 0
     for answer in valid_answers:
         stored_correct = answer["correct_answer"] if "correct_answer" in answer.keys() else None
-        correct_answer = stored_correct or QUESTIONS[answer["question_index"]]["correct"]
+        correct_answer = stored_correct or stored_question(answer)["correct"]
         is_correct = answer["answer"] == correct_answer
         correct_count += int(is_correct)
         confidence_total += answer["confidence"]
@@ -162,6 +182,7 @@ def get_connection():
 
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -202,6 +223,8 @@ def admin_api_required(view):
 
 def initialize_database():
     with database_cursor() as (conn, cursor):
+        if DATABASE_BACKEND == "postgresql":
+            cursor.execute("SELECT pg_advisory_xact_lock(73190521)")
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS participants (
@@ -236,6 +259,7 @@ def initialize_database():
 
         # Doplní sloupce i do databáze vytvořené starší verzí aplikace.
         extra_columns = {
+            "metadata_snapshot": "TEXT",
             "image_id": "TEXT",
             "correct_answer": "TEXT",
             "technique": "TEXT",
@@ -253,6 +277,17 @@ def initialize_database():
                     cursor.execute(f"ALTER TABLE answers ADD COLUMN {column} {column_type}")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_answers_participant ON answers(participant_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_answers_image ON answers(image_id)")
+        cursor.execute("""CREATE TABLE IF NOT EXISTS quiz_assignments (
+            participant_id TEXT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+            question_index INTEGER NOT NULL,
+            image_id TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            public_id TEXT NOT NULL UNIQUE,
+            snapshot TEXT NOT NULL,
+            PRIMARY KEY(participant_id, question_index),
+            UNIQUE(participant_id, subject_id))""")
+        cursor.execute("""CREATE TABLE IF NOT EXISTS allocation_state (
+            dataset_key TEXT PRIMARY KEY, pending TEXT NOT NULL)""")
         conn.commit()
 
 
@@ -275,23 +310,83 @@ def save_participant(age: int, gender: str, experience: str) -> str:
     ensure_database_initialized()
     participant_id = str(uuid.uuid4())
     with database_cursor() as (conn, cursor):
+        # Serialize complementary allocation across workers and concurrent requests.
+        if DATABASE_BACKEND == "postgresql":
+            cursor.execute("SELECT pg_advisory_xact_lock(73190521)")
+        else:
+            cursor.execute("BEGIN IMMEDIATE")
         cursor.execute(
             sql("INSERT INTO participants (id, age, gender, experience, created_at) VALUES (?, ?, ?, ?, ?)"),
             (participant_id, age, gender, experience, utc_now()),
         )
+        allocate_questions(cursor, participant_id)
         conn.commit()
     return participant_id
 
 
-def save_answer(participant_id: str, question_index: int, answer: str, confidence: int, ai_reason: str = None):
+def allocate_questions(cursor, participant_id):
+    pairs = {}
+    for question in QUESTIONS:
+        pair = pairs.setdefault(question["subject_id"], {})
+        if question["correct"] in pair:
+            raise ValueError("Dvojice obsahuje duplicitní variantu")
+        pair[question["correct"]] = question
+    if any(not key or set(pair) != {"ai", "photo"} for key, pair in pairs.items()):
+        raise ValueError("Každá dvojice musí obsahovat jednu fotografii a jednu AI variantu")
+    key = hashlib.sha256(json.dumps(QUESTIONS, sort_keys=True).encode()).hexdigest()
+    cursor.execute(sql("SELECT pending FROM allocation_state WHERE dataset_key = ?"), (key,))
+    state = cursor.fetchone()
+    rng = secrets.SystemRandom()
+    pending = json.loads(state["pending"]) if state else {}
+    if pending:
+        choices = pending
+        complement = {}
+    else:
+        subjects = list(pairs)
+        rng.shuffle(subjects)
+        ai_count = len(subjects) // 2 + (rng.randrange(2) if len(subjects) % 2 else 0)
+        choices = {subject: ("ai" if i < ai_count else "photo") for i, subject in enumerate(subjects)}
+        complement = {subject: ("photo" if label == "ai" else "ai") for subject, label in choices.items()}
+    cursor.execute(sql("""INSERT INTO allocation_state(dataset_key, pending) VALUES (?, ?)
+        ON CONFLICT(dataset_key) DO UPDATE SET pending = excluded.pending"""),
+        (key, json.dumps(complement)))
+    selected = [pairs[subject][label] for subject, label in choices.items()]
+    rng.shuffle(selected)
+    for index, question in enumerate(selected):
+        cursor.execute(sql("""INSERT INTO quiz_assignments
+            (participant_id, question_index, image_id, subject_id, public_id, snapshot)
+            VALUES (?, ?, ?, ?, ?, ?)"""),
+            (participant_id, index, question["image_id"], question["subject_id"],
+             str(uuid.uuid4()), json.dumps(question, ensure_ascii=False)))
+
+
+def get_assignments(participant_id):
     ensure_database_initialized()
-    question = QUESTIONS[question_index]
+    with database_cursor() as (_, cursor):
+        cursor.execute(sql("SELECT * FROM quiz_assignments WHERE participant_id = ? ORDER BY question_index"), (participant_id,))
+        return cursor.fetchall()
+
+
+def save_answer(participant_id: str, question_index: int, answer: str, confidence: int, ai_reason: str = None, image_id=None):
+    ensure_database_initialized()
+    assignments = get_assignments(participant_id)
+    if assignments:
+        if question_index not in range(len(assignments)):
+            raise ValueError("Neplatný index otázky")
+        assignment = assignments[question_index]
+        if image_id != assignment["public_id"]:
+            raise ValueError("Obrázek neodpovídá přidělené otázce; obnovte stránku")
+        question = json.loads(assignment["snapshot"])
+    else:
+        if question_index not in range(len(LEGACY_QUESTIONS)):
+            raise ValueError("Neplatná původní otázka")
+        question = LEGACY_QUESTIONS[question_index]
     query = """
         INSERT INTO answers (
             id, participant_id, question_index, image_id, answer, correct_answer,
             confidence, ai_reason, technique, difficulty, source_dataset,
-            subject_id, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            subject_id, created_at, metadata_snapshot
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(participant_id, question_index) DO UPDATE SET
             image_id = excluded.image_id,
             answer = excluded.answer,
@@ -302,14 +397,15 @@ def save_answer(participant_id: str, question_index: int, answer: str, confidenc
             difficulty = excluded.difficulty,
             source_dataset = excluded.source_dataset,
             subject_id = excluded.subject_id,
-            created_at = excluded.created_at
+            created_at = excluded.created_at,
+            metadata_snapshot = excluded.metadata_snapshot
     """
     with database_cursor() as (conn, cursor):
         cursor.execute(sql(query), (
             str(uuid.uuid4()), participant_id, question_index, question["image_id"],
             answer, question["correct"], confidence, ai_reason or None,
             question["technique"], question["difficulty"],
-            question["source_dataset"], question["subject_id"], utc_now(),
+            question["source_dataset"], question["subject_id"], utc_now(), json.dumps(question, ensure_ascii=False),
         ))
         conn.commit()
 
@@ -326,7 +422,7 @@ def get_answers(participant_id: str):
     with database_cursor() as (_, cursor):
         cursor.execute(
             sql("""SELECT question_index, image_id, answer, correct_answer, confidence,
-                       ai_reason, technique, difficulty, source_dataset, subject_id, created_at
+                       ai_reason, technique, difficulty, source_dataset, subject_id, created_at, metadata_snapshot
                     FROM answers WHERE participant_id = ? ORDER BY question_index"""),
             (participant_id,),
         )
@@ -360,17 +456,51 @@ def index():
     return send_from_directory(".", "index.html")
 
 
+@app.route("/<asset>")
+def frontend_asset(asset):
+    if asset not in {"style.css", "script.js"}:
+        abort(404)
+    return send_from_directory(".", asset)
+
+
+@app.route("/api/media/<public_id>")
+def quiz_media(public_id):
+    ensure_database_initialized()
+    with database_cursor() as (_, cursor):
+        cursor.execute(sql("SELECT snapshot FROM quiz_assignments WHERE public_id = ?"), (public_id,))
+        row = cursor.fetchone()
+    if not row:
+        abort(404)
+    source = json.loads(row["snapshot"])["src"]
+    return send_from_directory(".", source, download_name="image",
+                               mimetype=mimetypes.guess_type(source)[0])
+
+
 @app.route("/api/images", methods=["GET"])
 def get_images():
     """Vrátí frontendová data bez správných odpovědí a výzkumných metadat."""
+    participant_id = request.args.get("participant_id", "")
+    if not get_participant(participant_id):
+        return jsonify({"error": "Respondent nebyl nalezen"}), 404
     return jsonify([
         {
-            "image_id": question["image_id"],
-            "type": question["type"],
-            "src": question["src"],
+            "image_id": question["public_id"],
+            "type": "photo",
+            "src": "/api/media/" + question["public_id"],
         }
-        for question in QUESTIONS
+        for question in get_assignments(participant_id)
     ])
+
+
+@app.route("/api/quiz/<participant_id>")
+def quiz_progress(participant_id):
+    if not get_participant(participant_id):
+        return jsonify({"error": "Respondent nebyl nalezen"}), 404
+    assignments = get_assignments(participant_id)
+    if not assignments:
+        return jsonify({"error": "Starší test nelze obnovit"}), 409
+    answered = {a["question_index"] for a in get_answers(participant_id)}
+    return jsonify({"next_index": next((i for i in range(len(assignments)) if i not in answered), len(assignments))})
 
 
 @app.route("/api/health", methods=["GET"])
@@ -390,7 +520,7 @@ def health():
 @app.route("/api/live", methods=["GET"])
 def live():
     """Liveness check independent of external database availability."""
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "ok", "version": "paired-quiz-v1"}), 200
 
 
 @app.route("/api/participants", methods=["POST"])
@@ -402,7 +532,7 @@ def create_participant():
         gender = data.get("gender")
         experience = data.get("experience")
         
-        if not age or not gender or not experience:
+        if age <= 0 or not gender or not experience:
             return jsonify({"error": "Chybí povinná pole"}), 400
         
         participant_id = save_participant(age, gender, experience)
@@ -429,7 +559,7 @@ def submit_answer():
         
         if not participant_id or answer not in {"ai", "photo"}:
             return jsonify({"error": "Chybí povinná pole"}), 400
-        if question_index not in range(len(QUESTIONS)):
+        if question_index < 0:
             return jsonify({"error": "Neplatný index otázky"}), 400
         if confidence not in range(1, 6):
             return jsonify({"error": "Jistota musí být číslo od 1 do 5"}), 400
@@ -439,7 +569,7 @@ def submit_answer():
         if not participant:
             return jsonify({"error": "Participant nebyl nalezen"}), 404
         
-        save_answer(participant_id, question_index, answer, confidence, ai_reason)
+        save_answer(participant_id, question_index, answer, confidence, ai_reason, data.get("image_id"))
         return jsonify({"success": True}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -522,9 +652,9 @@ def export_csv():
             answers = get_answers(p["id"])
             for ans in answers:
                 question_index = ans["question_index"]
-                if question_index not in range(len(QUESTIONS)):
+                if not (ans["correct_answer"] or stored_question(ans).get("correct")):
                     continue
-                correct_answer = ans["correct_answer"] or QUESTIONS[question_index]["correct"]
+                correct_answer = ans["correct_answer"] or stored_question(ans)["correct"]
                 is_correct = ans["answer"] == correct_answer
                 data.append({
                     "participant_id": p["id"],
@@ -532,7 +662,7 @@ def export_csv():
                     "gender": p["gender"],
                     "experience": p["experience"],
                     "question_index": question_index,
-                    "image_id": ans["image_id"] or QUESTIONS[question_index]["image_id"],
+                    "image_id": ans["image_id"] or stored_question(ans).get("image_id"),
                     "correct_answer": correct_answer,
                     "answer": ans["answer"],
                     "is_correct": is_correct,
@@ -545,6 +675,8 @@ def export_csv():
                     "subject_id": ans["subject_id"],
                     "participant_created_at": p["created_at"],
                     "answer_created_at": ans["created_at"],
+                    "difficulty_intended": stored_question(ans).get("metadata", {}).get("difficulty_intended", ""),
+                    "deliberate_cues": stored_question(ans).get("metadata", {}).get("deliberate_cues", ""),
                 })
         
         df = pd.DataFrame(data)
@@ -566,6 +698,63 @@ def get_age_analysis():
         return jsonify(calculate_age_analysis(get_all_participants())), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
+
+def image_analysis():
+    ensure_database_initialized()
+    groups = {key: {"question": q, "responses": [], "assigned_count": 0}
+              for key, q in ALL_QUESTIONS.items()}
+    with database_cursor() as (_, cursor):
+        cursor.execute("SELECT image_id, snapshot, COUNT(*) AS n FROM quiz_assignments GROUP BY image_id, snapshot")
+        for row in cursor.fetchall():
+            group = groups.setdefault(row["image_id"], {"question": json.loads(row["snapshot"]), "responses": [], "assigned_count": 0})
+            group["assigned_count"] += row["n"]
+        cursor.execute("""SELECT a.*, p.age, p.gender, p.experience FROM answers a
+            JOIN participants p ON p.id = a.participant_id ORDER BY a.created_at""")
+        for row in cursor.fetchall():
+            response = dict(row)
+            q = stored_question(response)
+            key = response["image_id"] or q.get("image_id", "legacy_unknown")
+            group = groups.setdefault(key, {"question": q, "responses": [], "assigned_count": 0})
+            response["correct_answer"] = response["correct_answer"] or q.get("correct")
+            response["is_correct"] = response["answer"] == response["correct_answer"]
+            response.pop("metadata_snapshot", None)
+            group["responses"].append(response)
+    result = []
+    for key, group in sorted(groups.items()):
+        answers = group["responses"]
+        result.append({"image_id": key, **group, **calculate_metrics(answers),
+            "ai_count": sum(a["answer"] == "ai" for a in answers),
+            "photo_count": sum(a["answer"] == "photo" for a in answers),
+            "confident_errors": sum(not a["is_correct"] and a["confidence"] >= 4 for a in answers),
+            "confidence_counts": [
+                {"level": level,
+                 "correct": sum(a["confidence"] == level and a["is_correct"] for a in answers),
+                 "incorrect": sum(a["confidence"] == level and not a["is_correct"] for a in answers)}
+                for level in range(1, 6)]})
+    return result
+
+
+@app.route("/api/results/image-analysis")
+@admin_api_required
+def get_image_analysis():
+    return jsonify(image_analysis())
+
+
+@app.route("/admin/images")
+@admin_api_required
+def admin_images():
+    return render_template("image_analysis.html", images=image_analysis(),
+                           auth_query=urlencode({"password": request.args.get("password", "")}))
+
+
+@app.route("/admin/media/<image_id>")
+@admin_api_required
+def admin_media(image_id):
+    question = ALL_QUESTIONS.get(image_id)
+    if not question:
+        abort(404)
+    return send_from_directory(".", question["src"])
 
 
 @app.route("/admin/respondent/<participant_id>", methods=["GET"])
@@ -616,8 +805,8 @@ def respondent_detail(participant_id):
                 
                 <div class="info">
                     <div class="info-item"><span class="info-label">Věk:</span> {participant['age']}</div>
-                    <div class="info-item"><span class="info-label">Pohlaví:</span> {participant['gender']}</div>
-                    <div class="info-item"><span class="info-label">Zkušenost s AI:</span> {participant['experience']}</div>
+                    <div class="info-item"><span class="info-label">Pohlaví:</span> {escape(participant['gender'])}</div>
+                    <div class="info-item"><span class="info-label">Zkušenost s AI:</span> {escape(participant['experience'])}</div>
                     <div class="info-item"><span class="info-label">Vyplnil:</span> {participant['created_at']}</div>
                 </div>
                 
@@ -640,14 +829,14 @@ def respondent_detail(participant_id):
         metrics = calculate_metrics(answers)
         for ans in answers:
             question_index = ans["question_index"]
-            if question_index not in range(len(QUESTIONS)):
+            if not (ans["correct_answer"] or stored_question(ans).get("correct")):
                 continue
             respondent_answer = ans["answer"]
             confidence = ans["confidence"]
             ai_reason = ans["ai_reason"] or "-"
             
-            correct_answer = ans["correct_answer"] or QUESTIONS[question_index]["correct"]
-            what_was = QUESTIONS[question_index].get("label", "Obrázek")
+            correct_answer = ans["correct_answer"] or stored_question(ans)["correct"]
+            what_was = escape(ans["image_id"] or stored_question(ans).get("image_id", "legacy"))
             
             is_correct = respondent_answer == correct_answer
             answer_score = score_answer(is_correct, confidence)
@@ -663,7 +852,7 @@ def respondent_detail(participant_id):
                             <td>{status}</td>
                             <td>{confidence}/5</td>
                             <td><strong>{answer_score:.0f}/100</strong></td>
-                            <td>{ai_reason[:60]}</td>
+                            <td>{escape(ai_reason)}</td>
                         </tr>
             """
         
@@ -840,6 +1029,7 @@ def admin_dashboard():
                     <button onclick="window.location.href='/'">← Zpět na test</button>
                 </div>
                 
+                <p><a href="/admin/images?{urlencode({'password': password or ''})}">Výsledky podle obrázků, jistoty a zdůvodnění →</a></p>
                 <h2>Všichni respondenti:</h2>
                 <table>
                     <thead>
@@ -868,8 +1058,8 @@ def admin_dashboard():
                         <tr>
                             <td style="font-family: monospace; font-size: 11px;"><a href="{detail_link}">{p['id'][:12]}...</a></td>
                             <td>{p['age']}</td>
-                            <td>{p['gender']}</td>
-                            <td>{p['experience']}</td>
+                            <td>{escape(p['gender'])}</td>
+                            <td>{escape(p['experience'])}</td>
                             <td>{p['answers_count'] or 0}</td>
                             <td>{ai_photo}</td>
                             <td>{avg_conf}</td>
@@ -945,15 +1135,15 @@ def admin_dashboard():
             answers = get_answers(p["id"])
             for ans in answers:
                 question_index = ans["question_index"]
-                if question_index not in range(len(QUESTIONS)):
+                if not (ans["correct_answer"] or stored_question(ans).get("correct")):
                     continue
                 respondent_answer = ans["answer"]
                 confidence = ans["confidence"]
                 ai_reason = ans["ai_reason"] or ""
                 
                 # Zjisti co byla správná odpověď
-                correct_answer = ans["correct_answer"] or QUESTIONS[question_index]["correct"]
-                what_was = QUESTIONS[question_index].get("label", "Obrázek")
+                correct_answer = ans["correct_answer"] or stored_question(ans)["correct"]
+                what_was = escape(ans["image_id"] or stored_question(ans).get("image_id", "legacy"))
                 
                 # Kontrola správnosti
                 answer_is_correct = respondent_answer == correct_answer
@@ -967,14 +1157,14 @@ def admin_dashboard():
                         <tr>
                             <td style="font-family: monospace; font-size: 11px;">{p['id'][:12]}...</td>
                             <td>{p['age']}</td>
-                            <td>{p['gender']}</td>
+                            <td>{escape(p['gender'])}</td>
                             <td>Otázka {question_index + 1}</td>
                             <td>{what_was}</td>
                             <td><strong>{answer_display}</strong></td>
                             <td>{is_correct}</td>
                             <td>{confidence}/5</td>
                             <td><strong>{answer_score:.0f}/100</strong></td>
-                            <td style="font-size: 12px; max-width: 200px;">{ai_reason[:50]}</td>
+                            <td style="font-size: 12px; max-width: 200px;">{escape(ai_reason)}</td>
                         </tr>
                 """
         

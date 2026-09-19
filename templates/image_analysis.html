@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Výsledky podle obrázků</title>
+  <style>
+    body {font:16px/1.5 Arial,sans-serif;margin:24px;background:#f5f5f5;color:#222}
+    main {max-width:1200px;margin:auto} article {background:white;padding:24px;margin:24px 0;border-radius:12px}
+    .summary {display:flex;gap:24px;flex-wrap:wrap} img {width:220px;height:220px;object-fit:contain;background:#eee}
+    table {border-collapse:collapse;width:100%;font-size:14px} th,td {padding:10px;border-bottom:1px solid #ddd;text-align:left}
+    th {background:#eee} .scroll {overflow-x:auto} .reason {min-width:180px;white-space:pre-wrap;overflow-wrap:anywhere}
+    a {color:#374bb5} small {color:#555} details {margin-top:18px} summary {cursor:pointer;font-weight:bold}
+  </style>
+</head>
+<body><main>
+  <a href="/admin?{{ auth_query }}">← Přehled respondentů</a>
+  <h1>Výsledky podle obrázků</h1>
+  <p>U každého obrázku jsou odpovědi, jistota a zdůvodnění jednotlivých respondentů. Přidělení zahrnuje i nedokončené testy; počet odpovědí se proto může mezi verzemi lišit.</p>
+  <p><a href="/api/results/export-csv?{{ auth_query }}">Stáhnout všechny odpovědi CSV</a></p>
+  {% for item in images %}
+  <article id="{{ item.image_id }}">
+    <div class="summary">
+      <a href="/admin/media/{{ item.image_id }}?{{ auth_query }}" target="_blank" rel="noopener"><img src="/admin/media/{{ item.image_id }}?{{ auth_query }}" alt="{{ item.image_id }}" loading="lazy"></a>
+      <div>
+        <h2>{{ item.image_id }} · {{ 'AI' if item.question.correct == 'ai' else 'Fotografie' }}</h2>
+        <p>Dvojice: <strong>{{ item.question.subject_id }}</strong> · Sada: {{ item.question.source_dataset }}</p>
+        <p>Přiděleno: {{ item.assigned_count }} · Odpovědí: {{ item.answer_count }}<br>
+          Označeno jako AI: <strong>{{ item.ai_count }}</strong> · Jako fotografie: <strong>{{ item.photo_count }}</strong><br>
+          Úspěšnost: {{ item.accuracy }} % · Průměrná jistota: {{ item.avg_confidence if item.avg_confidence is not none else '—' }}/5<br>
+          Chybné odpovědi s jistotou 4–5: <strong>{{ item.confident_errors }}</strong></p>
+        {% if item.question.metadata %}
+        <small>Zamýšlená obtížnost: {{ item.question.metadata.get('difficulty_intended') or 'neuvedena' }} (neověřená respondenty).<br>
+        Záměrně požadovaná vodítka: {{ item.question.metadata.get('deliberate_cues') or 'žádná' }}</small>
+        {% endif %}
+      </div>
+    </div>
+    <div class="scroll"><table>
+      <tr><th>Jistota</th>{% for bucket in item.confidence_counts %}<th>{{ bucket.level }}/5</th>{% endfor %}</tr>
+      <tr><th>Správné odpovědi</th>{% for bucket in item.confidence_counts %}<td>{{ bucket.correct }}</td>{% endfor %}</tr>
+      <tr><th>Chybné odpovědi</th>{% for bucket in item.confidence_counts %}<td>{{ bucket.incorrect }}</td>{% endfor %}</tr>
+    </table></div>
+    <details><summary>Jednotlivé reakce ({{ item.answer_count }})</summary>
+      <div class="scroll"><table>
+        <thead><tr><th>Respondent</th><th>Věk / pohlaví / zkušenost s AI</th><th>Pořadí</th><th>Odpověď</th><th>Správně</th><th>Jistota</th><th>Zdůvodnění volby AI</th></tr></thead>
+        <tbody>{% for a in item.responses %}<tr>
+          <td><a href="/admin/respondent/{{ a.participant_id }}?{{ auth_query }}">{{ a.participant_id[:12] }}</a></td>
+          <td>{{ a.age }} / {{ a.gender }} / {{ a.experience }}</td><td>{{ a.question_index + 1 }}</td>
+          <td>{{ 'AI' if a.answer == 'ai' else 'Fotografie' }}</td><td>{{ 'Ano' if a.is_correct else 'Ne' }}</td>
+          <td>{{ a.confidence }}/5</td><td class="reason">{{ a.ai_reason or '—' }}</td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+    </details>
+  </article>
+  {% endfor %}
+</main></body></html>
