@@ -153,7 +153,7 @@ h1 { margin: 0; font-size: clamp(2rem, 6vw, 3.1rem); line-height: 1.08; }
 #status { color: #5369d8; font-weight: 700; }
 
 .image-frame {
-  aspect-ratio: 16 / 10;
+  height: clamp(280px, 65vh, 760px);
   overflow: hidden;
   display: grid;
   place-items: center;
@@ -161,7 +161,7 @@ h1 { margin: 0; font-size: clamp(2rem, 6vw, 3.1rem); line-height: 1.08; }
   border-radius: 16px;
 }
 
-.image-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.image-frame img { width: 100%; height: 100%; min-width: 0; min-height: 0; object-fit: contain; display: block; }
 
 form { display: grid; gap: 24px; margin-top: 28px; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
