@@ -38,7 +38,7 @@ export async function run() {
     vm.runInNewContext(code, {
       document: { querySelector: element, querySelectorAll: () => genders },
       localStorage: { getItem: k => saved.get(k), setItem: (k,v) => saved.set(k,v), removeItem: k => saved.delete(k) },
-      console: { info() {}, error() {} }, fetch,
+      console: { info() {}, error() {} }, fetch, quizApi: { request: fetch, reset() {} },
     });
     return { element, form, genders };
   }

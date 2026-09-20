@@ -458,7 +458,7 @@ def index():
 
 @app.route("/<asset>")
 def frontend_asset(asset):
-    if asset not in {"style.css", "script.js"}:
+    if asset not in {"style.css", "script.js", "config.js", "quiz-api.js"}:
         abort(404)
     return send_from_directory(".", asset)
 

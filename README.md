@@ -1,5 +1,29 @@
 # Rozpoznávání AI obrázků
 
+## Produkce: GitHub Pages + Supabase
+
+- Kvíz: https://douky4.github.io/diplomka_ai_test/
+- Administrace a CSV: https://douky4.github.io/diplomka_ai_test/admin.html
+- Přihlášení do administrace používá heslo `ADMIN_PASSWORD` z lokálního `.env`.
+- Data zůstávají v Supabase. `public.participants` obsahuje respondenty, `public.answers` jednotlivé odpovědi, jistotu, zdůvodnění a identifikaci obrázku/dvojice. `public.quiz_assignments` eviduje přidělené otázky.
+- Pro analýzu použijte **Export CSV** v administraci; jeden řádek je jedna odpověď včetně údajů respondenta. Výsledky lze také prohlížet přes Supabase Table Editor.
+
+GitHub Actions při pushi do `main` sestaví a publikuje pouze `_site`. Nastavení repozitáře obsahuje veřejné proměnné `SUPABASE_URL` a `SUPABASE_PUBLISHABLE_KEY`. Heslo administrace ani připojení k databázi do GitHubu nepatří.
+
+Losování a zápis odpovědí provádějí SQL funkce v Supabase. Přímé čtení tabulek návštěvníky je zakázané; správné odpovědi jsou dostupné až v administraci. Každý respondent dostane 15 různých dvojic, vždy jen originál nebo AI verzi, s poměrem 7:8. Dva po sobě založení respondenti dostanou vzájemně doplňkové varianty.
+
+Příprava nebo aktualizace databázových funkcí z lokálního `.env`:
+
+```powershell
+.venv\Scripts\python.exe scripts/deploy_supabase.py
+.venv\Scripts\python.exe scripts/verify_supabase.py
+.venv\Scripts\python.exe scripts/build_pages.py
+```
+
+Nasazení databáze uchovává záznamy a před změnou vytváří soukromou zálohu v `.local/backups/`. Ověřovací skript vrací všechny své testovací zápisy zpět transakcí. Administrace neodesílá heslo v URL; přihlášení platí čtyři hodiny.
+
+Původní Flask/Render zůstává funkční jako záloha. Rozpracovaný kvíz se mezi doménami automaticky nepřenáší, protože prohlížeč ukládá identifikátor podle domény. Novým respondentům posílejte adresu GitHub Pages. Níže uvedené postupy pro Flask platí pro původní server.
+
 Webová výzkumná aplikace, ve které respondent rozlišuje skutečné fotografie od obrázků vytvořených pomocí AI a u každé odpovědi uvádí míru jistoty.
 
 ## Technologie

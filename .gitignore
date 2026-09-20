@@ -17,3 +17,7 @@ database.db
 .DS_Store
 .DS_Store
 Thumbs.db
+
+# Generated Pages artifacts and private deployment backups
+_site/
+.local/

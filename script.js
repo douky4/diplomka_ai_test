@@ -24,7 +24,7 @@ const experienceSelect = document.querySelector("#experience");
 // Fetch images from API
 async function loadImages() {
   try {
-    const response = await fetch(`/api/images?participant_id=${encodeURIComponent(participantId)}`);
+    const response = await quizApi.request(`/api/images?participant_id=${encodeURIComponent(participantId)}`);
     const data = await response.json();
     images = data;
     if (!response.ok || !Array.isArray(data) || data.length === 0) {
@@ -42,6 +42,8 @@ const resetIntroBtn = document.querySelector('#reset-intro');
 if (resetIntroBtn) {
   resetIntroBtn.addEventListener('click', () => {
     participantId = null;
+    quizApi.reset();
+    startButton.disabled = false;
     localStorage.removeItem(sessionKey);
     currentIndex = 0;
     ageInput.value = "";
@@ -146,7 +148,7 @@ introForm.addEventListener("submit", async (event) => {
 
   try {
     if (!participantId) {
-      const response = await fetch("/api/participants", {
+      const response = await quizApi.request("/api/participants", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(respondentData)
@@ -197,7 +199,7 @@ async function initializeApp() {
     startButton.disabled = true;
     introStatus.textContent = "Obnovuji rozpracovaný test...";
     try {
-      const response = await fetch(`/api/quiz/${encodeURIComponent(savedId)}`);
+      const response = await quizApi.request(`/api/quiz/${encodeURIComponent(savedId)}`);
       if (response.status === 404 || response.status === 409) {
         localStorage.removeItem(sessionKey);
         introStatus.textContent = "Předchozí test již není dostupný. Můžete zahájit nový.";
@@ -244,7 +246,7 @@ form.addEventListener("submit", async (event) => {
 
   // Odešli odpověď na server
   try {
-    const response = await fetch("/api/answers", {
+    const response = await quizApi.request("/api/answers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
